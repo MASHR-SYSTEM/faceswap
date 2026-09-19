@@ -8,7 +8,7 @@ from .background import VirtualBackgroundEffect
 from .detectors import FaceBox, FaceDetector
 from .effects import TargetHeadEffect, apply_cartoon, apply_privacy_blur
 from .lipsync import MouthAnchor, apply_mouth_animation
-from .neural import NeuralFaceSwapEffect
+from .swap_backends import FaceSwapBackend, get_backend
 from .schemas import EffectConfig
 from .settings import get_settings
 
@@ -23,7 +23,9 @@ class FrameProcessor:
         self._frame_index = 0
         self._detect_every_n_frames = 3
         self._target_head = TargetHeadEffect()
-        self._neural_faceswap = NeuralFaceSwapEffect(settings.models_dir, settings.neural_cache_dir)
+        self._backend_id = "inswapper"
+        self._neural_faceswap: FaceSwapBackend = get_backend(self._backend_id).factory(
+            settings.models_dir, settings.neural_cache_dir / self._backend_id)
         self._background = VirtualBackgroundEffect(settings.background_model_path)
         self._default_model_path = settings.models_dir / "inswapper_128.onnx"
         self._default_target_path = settings.assets_dir / "aging-cyber-monk-target.png"
@@ -103,7 +105,15 @@ class FrameProcessor:
         mask_source = frame_bgr
         if config.mode == "onnx_faceswap":
             settings = get_settings()
-            model_path = _resolve_model_path(config.model_path, self._default_model_path, settings.models_dir)
+            spec = get_backend(config.swap_backend)
+            if self._backend_id != spec.id:
+                replacement = spec.factory(settings.models_dir, settings.neural_cache_dir / spec.id)
+                self._neural_faceswap.close()
+                self._neural_faceswap = replacement
+                self._backend_id = spec.id
+            default_model = (self._default_model_path if spec.id == "inswapper"
+                             else settings.models_dir / spec.default_model)
+            model_path = _resolve_model_path(config.model_path, default_model, settings.models_dir)
             target_path = _resolve_target_path(config.target_image_path, self._default_target_path)
             background_path = _resolve_target_path(config.background_path, self._default_background_path)
 

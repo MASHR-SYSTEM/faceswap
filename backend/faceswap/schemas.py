@@ -1,6 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from .swap_backends import backend_catalog, get_backend
 
 
 EffectMode = Literal["passthrough", "cartoon", "privacy_blur", "target_head", "onnx_faceswap"]
@@ -12,6 +14,14 @@ VoiceSynthesisQuality = Literal["low_latency", "balanced", "quality"]
 
 
 class EffectConfig(BaseModel):
+    swap_backend: str = "inswapper"
+
+    @field_validator("swap_backend")
+    @classmethod
+    def validate_swap_backend(cls, value: str) -> str:
+        get_backend(value)
+        return value
+
     mode: EffectMode = "onnx_faceswap"
     strength: float = Field(default=0.82, ge=0.0, le=1.0)
     smoothing: float = Field(default=0.72, ge=0.0, le=0.98)
@@ -265,6 +275,7 @@ class AssetUploadResponse(BaseModel):
 
 
 class CapabilityStatus(BaseModel):
+    swap_backends: list[dict[str, str]] = Field(default_factory=backend_catalog)
     target_presets: list[str] = []
     platform: str = "Linux"
     virtual_camera_backend: str = "v4l2loopback"

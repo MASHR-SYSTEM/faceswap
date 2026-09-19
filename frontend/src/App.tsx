@@ -40,6 +40,7 @@ const defaultEffect: EffectConfig = {
   debug: false,
   target_image_path: "assets/aging-cyber-monk-target.png",
   model_path: null,
+  swap_backend: "inswapper",
   provider: "cuda",
   precision: "fp32",
   edge_feather: 0.35,
@@ -702,7 +703,7 @@ export function App() {
               {effect.mode === 'target_head' && <option value="target_head">Target overlay</option>}
             </select>
           </label>
-          {!neuralAvailable && <p className="section-help">Neural swap needs its optional runtime and separately licensed models. Camera preview and cartoon work without them.</p>}
+          {(effect.swap_backend ?? "inswapper") === "inswapper" && !neuralAvailable && <p className="section-help">Neural swap needs its optional runtime and separately licensed models. Camera preview and cartoon work without them.</p>}
           <p className="section-help">Copy compatible model files into <code>{capabilities?.models_dir ?? 'the models folder'}</code>, then refresh devices. Missing or invalid models are reported when starting neural swap.</p>
           <p className="section-help">Virtual camera: {capabilities?.platform === 'Windows' ? 'install UnityCapture separately, then select Unity Video Capture in your call app.' : 'install and load v4l2loopback, then select FaceSwap in your call app.'}</p>
           <a href="https://faceswap.mashr.ai/#setup" target="_blank" rel="noreferrer">Setup guide</a>
@@ -1129,6 +1130,16 @@ export function App() {
 
         <ControlGroup title="Performance" icon={<Cpu size={18} />}>
           <div className="neural-options">
+            <label className="field-label" htmlFor="swap-backend">Face-swap engine</label>
+            <select
+              id="swap-backend"
+              value={effect.swap_backend ?? "inswapper"}
+              onChange={(event) => patchEffect({ swap_backend: event.target.value, model_path: null })}
+            >
+              {(capabilities?.swap_backends ?? [{ id: "inswapper", label: "InSwapper" }]).map((backend) => (
+                <option key={backend.id} value={backend.id}>{backend.label}</option>
+              ))}
+            </select>
             <label className="field-label" htmlFor="precision">
               Precision
             </label>

@@ -32,6 +32,7 @@ export interface AudioDeviceInfo {
 }
 
 export interface EffectConfig {
+  swap_backend: string;
   mode: EffectMode;
   strength: number;
   smoothing: number;
@@ -250,6 +251,7 @@ export interface SessionStatus {
 }
 
 export interface CapabilityStatus {
+  swap_backends: { id: string; label: string; default_model: string }[];
   target_presets?: string[];
   platform?: string;
   voice_modes?: string[];

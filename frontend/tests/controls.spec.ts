@@ -1,8 +1,8 @@
 import { test, expect, Page } from '@playwright/test';
 
-async function app(page: Page) {
+async function app(page: Page, modelPath: string | null = null) {
   let effect: any = { mode: 'onnx_faceswap', strength: .82, smoothing: .5, scale: 1.22, y_offset: .5, mirror: true, debug: false,
-    target_image_path: null, model_path: null, provider: 'cpu', precision: 'fp32', edge_feather: .35, color_match: .25,
+    target_image_path: null, model_path: modelPath, provider: 'cpu', precision: 'fp32', edge_feather: .35, color_match: .25,
     sharpen: .2, temporal_smoothing: .4, background_enabled: false, background_path: null, background_strength: 1, background_threshold: 1, background_smoothing: 0 };
   let revision = 1;
   let status: any = { phase: 'idle', generation: 0, running: false, fps_actual: 0, frames_processed: 0, frame_age_ms: 0, dropped_frames: 0, effect_revision: revision };
@@ -22,7 +22,7 @@ async function app(page: Page) {
     if (path === '/api/session/config') result = { effect, revision };
     if (path === '/api/session/effect') { effect = body.effect; revision++; status.effect_revision = revision; result = status; }
     if (path === '/api/devices') result = [{ index: 0, device_id: 'rgb-id', label: 'Standard webcam', kind: 'standard', is_default: true }, { index: 2, device_id: 'ir-id', label: 'Infrared camera', kind: 'infrared' }];
-    if (path === '/api/capabilities') result = { platform: 'Linux', onnxruntime: false, insightface: false, default_model_present: false, models_dir: '/user/models', v4l2loopback_devices: [], target_presets: [], voice_modes: ['dsp'] };
+    if (path === '/api/capabilities') result = { platform: 'Linux', onnxruntime: false, insightface: false, default_model_present: false, models_dir: '/user/models', v4l2loopback_devices: [], target_presets: [], voice_modes: ['dsp'], swap_backends: [{ id: 'inswapper', label: 'InSwapper', default_model: 'inswapper_128.onnx' }, { id: 'example', label: 'Example engine', default_model: 'example.onnx' }] };
     if (path === '/api/voice/status') result = voice;
     if (path === '/api/voice/devices') result = [];
     if (path === '/api/voice/virtual-mic') result = { source_present: false };
@@ -41,6 +41,15 @@ async function app(page: Page) {
   await expect(page.getByRole('button', { name: 'Start camera', exact: true })).toBeEnabled();
   return requests;
 }
+
+test('backend selection uses catalog and clears the previous model path', async ({ page }) => {
+  const requests = await app(page, '/models/custom-inswapper.onnx');
+  await page.locator('summary').filter({ hasText: /^Performance$/ }).click();
+  await expect(page.getByLabel('Face-swap engine')).toHaveValue('inswapper');
+  await page.getByLabel('Face-swap engine').selectOption('example');
+  await expect.poll(() => requests.filter(r => r.path === '/api/session/effect').at(-1)?.body.effect.swap_backend).toBe('example');
+  expect(requests.filter(r => r.path === '/api/session/effect').at(-1)?.body.effect.model_path).toBeNull();
+});
 
 test('camera changes show restart requirement and stop all is explicit', async ({ page }) => {
   const requests = await app(page);
