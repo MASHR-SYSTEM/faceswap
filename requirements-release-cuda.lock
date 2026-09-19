@@ -6,3 +6,24 @@ mediapipe==0.10.35
 onnxconverter-common==1.16.0
 # NVIDIA drivers/CUDA/cuDNN remain separately installed platform prerequisites.
 # This profile must pass real GPU acceptance before it is advertised as supported.
+absl-py==2.5.0
+charset-normalizer==3.5.1
+contourpy==1.4.0
+cycler==0.12.1
+flatbuffers==25.12.19
+fonttools==4.65.0
+imageio==2.37.4
+kiwisolver==1.5.1
+lazy-loader==0.5
+matplotlib==3.11.2
+ml-dtypes==0.6.0
+networkx==3.6.1
+protobuf==7.36.2
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+requests==2.34.2
+scikit-image==0.26.0
+six==1.17.0
+tifffile==2026.9.15
+tqdm==4.70.1
+urllib3==2.8.0

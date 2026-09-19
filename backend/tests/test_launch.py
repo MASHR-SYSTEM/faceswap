@@ -86,3 +86,50 @@ def test_output_rejects_wrong_frame_dimensions_and_type():
     output.validate(np.zeros((8, 10, 3), np.uint8))
     with pytest.raises(ValueError): output.validate(np.zeros((8, 9, 3), np.uint8))
     with pytest.raises(ValueError): output.validate(np.zeros((8, 10, 3), np.float32))
+
+
+def test_linux_virtual_output_negotiates_and_writes_complete_rgb(monkeypatch):
+    import platform
+    if platform.system() != 'Linux': pytest.skip('V4L2 ABI is Linux-specific')
+    import fcntl
+    from faceswap import output, camera
+    closed, writes = [], []
+    monkeypatch.setattr(camera, '_query_capabilities', lambda p: ('v4l2loopback', 2))
+    monkeypatch.setattr(output.os, 'open', lambda *a: 88)
+    monkeypatch.setattr(output.os, 'close', closed.append)
+    def write(fd, data):
+        writes.append(data)
+        return len(data)
+    monkeypatch.setattr(output.os, 'write', write)
+    monkeypatch.setattr(fcntl, 'ioctl', lambda *a: None)
+    camera_out = output.V4L2Output(10, 8, 30, '/dev/video42')
+    frame = np.arange(240, dtype=np.uint8).reshape(8, 10, 3)
+    camera_out.send(frame)
+    camera_out.close()
+    camera_out.close()
+    assert writes == [frame.tobytes()]
+    assert closed == [88]
+
+
+def test_unity_protocol_frame_is_rgba_with_correct_header():
+    import ctypes as c
+    import struct
+    import time
+    from faceswap.output import UnityOutput
+    memory = c.create_string_buffer(32 + 2 * 3 * 4)
+    c.c_uint32.from_buffer(memory).value = 2 * 3 * 4
+    camera = UnityOutput.__new__(UnityOutput)
+    camera.width, camera.height = 3, 2
+    camera.c = c
+    camera.mapping = c.addressof(memory)
+    camera.mutex, camera.sent, camera.want = 1, 2, 3
+    camera.owns_publisher = True
+    camera.last_receiver = time.monotonic()
+    camera.k = SimpleNamespace(WaitForSingleObject=lambda *a: 0, ReleaseMutex=lambda *a: True, SetEvent=lambda *a: True)
+    frame = np.arange(18, dtype=np.uint8).reshape(2, 3, 3)
+    camera.send(frame)
+    assert struct.unpack_from('=8I', memory.raw) == (24, 3, 2, 3, 0, 0, 0, 1000)
+    rgba = np.frombuffer(memory.raw[32:], np.uint8).reshape(2, 3, 4)
+    assert np.array_equal(rgba[:, :, :3], frame)
+    assert np.all(rgba[:, :, 3] == 255)
+    assert camera.state == 'ready'
