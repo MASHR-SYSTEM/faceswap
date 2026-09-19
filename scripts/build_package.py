@@ -55,7 +55,7 @@ def main():
                     shutil.copyfile(source, destination)
     # Minified frontend bundles still require their dependency notices.
     frontend_inventory = []
-    lock = json.loads((ROOT / 'frontend/package-lock.json').read_text())
+    lock = json.loads((ROOT / 'frontend/package-lock.json').read_text(encoding="utf-8"))
     for relative, metadata in sorted(lock.get('packages', {}).items()):
         if not relative or metadata.get('dev'):
             continue
@@ -65,7 +65,7 @@ def main():
             continue  # Platform-specific optional dependency not included in this build.
         if not manifest.is_file():
             raise RuntimeError(f'Missing frontend dependency: {relative}; run npm ci')
-        identity = json.loads(manifest.read_text())
+        identity = json.loads(manifest.read_text(encoding="utf-8"))
         name = identity.get('name', relative)
         frontend_inventory.append({'name': name, 'version': identity.get('version'),
                                    'license': identity.get('license')})
