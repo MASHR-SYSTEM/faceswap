@@ -1,0 +1,61 @@
+name: Upload validated candidate
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful release candidate validation run
+        required: true
+permissions:
+  actions: read
+  contents: read
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify candidate run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" > run.json
+          python - <<'PY'
+          import json
+          run = json.load(open('run.json'))
+          assert run['conclusion'] == 'success', 'Candidate validation must pass first'
+          assert run['path'] == '.github/workflows/release.yml', 'Expected candidate workflow'
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: candidates
+      - name: Verify checksums and upload to scoped destinations
+        env:
+          UPLOAD_TARGETS: ${{ secrets.CANDIDATE_UPLOAD_TARGETS }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, urllib.request
+          targets = json.loads(os.environ['UPLOAD_TARGETS'])
+          run = json.load(open('run.json'))
+          assert targets['revision'] == run['head_sha'], 'Source revision mismatch'
+          files = {}
+          for checksum in pathlib.Path('candidates').rglob('*.sha256'):
+              digest, name = checksum.read_text().strip().split(maxsplit=1)
+              archive = checksum.parent / name
+              assert archive.parent == checksum.parent, 'Invalid archive name'
+              with archive.open('rb') as stream:
+                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == digest, 'Checksum mismatch'
+              for path in (archive, checksum):
+                  assert path.name not in files, 'Duplicate artifact name'
+                  files[path.name] = path
+          assert files.keys() == targets['urls'].keys(), 'Unexpected artifact set'
+          for name, path in files.items():
+              request = urllib.request.Request(targets['urls'][name], data=path.read_bytes(), method='PUT')
+              try:
+                  with urllib.request.urlopen(request, timeout=300) as response:
+                      assert response.status == 200
+              except Exception:
+                  raise SystemExit(f'Upload failed for {name}') from None
+              print(f'Uploaded {name}')
+          PY
