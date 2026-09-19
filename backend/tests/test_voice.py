@@ -119,7 +119,9 @@ def test_custom_preset_can_still_pass_dry_voice_with_depth_zero():
     assert np.allclose(output, block, atol=1e-6)
 
 
-def test_virtual_mic_route_status_is_safe_without_route():
+def test_virtual_mic_route_status_is_safe_without_route(monkeypatch):
+    monkeypatch.setattr("faceswap.voice.platform.system", lambda: "Linux")
+    monkeypatch.setattr("faceswap.voice._pactl_short", lambda kind: [])
     status = get_virtual_mic_route_status()
 
     assert status.sink_name == "faceswap_voice_sink"

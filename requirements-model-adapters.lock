@@ -1,0 +1,3 @@
+# Install with --no-deps after the release runtime lock (see BUILD.md).
+insightface==1.0.1
+mediapipe==0.10.35

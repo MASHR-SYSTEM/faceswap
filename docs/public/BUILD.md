@@ -18,7 +18,14 @@ Build a native directory package with `python scripts/build_package.py` in a
 clean build environment with `pyinstaller==6.22.0` installed. Build on the target
 operating system; this is not cross compilation. GPU/model support is optional:
 install `requirements-release-cpu.lock` or `requirements-release-cuda.lock` into
-that environment before packaging. Model weights are never build inputs.
+that environment before packaging, then run
+`python -m pip install --no-deps -r requirements-model-adapters.lock`.
+The runtime lock supplies their dependencies explicitly. Both adapters use the
+single OpenCV contrib distribution: InsightFace's metadata names opencv-python,
+while MediaPipe names opencv-contrib-python. Installing both would overwrite the
+same cv2 module. Consequently pip check reports the unsatisfied distribution
+name for InsightFace; validate imports and inference separately. Model weights
+are never build inputs.
 
 The build collects dependency notices/inventory. Review those notices and native
 library redistribution terms before publishing any package. Public builds use

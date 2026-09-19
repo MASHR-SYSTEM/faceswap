@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from faceswap.avatar import AvatarStudio, MuseTalkConfig, _musetalk_command_parts
 from faceswap.schemas import AvatarProfile, AvatarRenderJob
@@ -95,7 +96,7 @@ def test_musetalk_renderer_builds_yaml_and_copies_output(tmp_path, monkeypatch):
     assert video_path.read_bytes() == b"musetalk-video"
     yaml_text = (assets / "avatar_outputs" / job_id / "musetalk" / "inference.yaml").read_text(encoding="utf-8")
     assert "source-25fps.mp4" in yaml_text
-    assert str(audio.resolve()) in yaml_text
+    assert yaml.safe_load(yaml_text)["avatar_0"]["audio_path"] == str(audio.resolve())
 
 
 class _Completed:
