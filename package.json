@@ -1,0 +1,20 @@
+{
+  "name": "faceswap-local",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:api": "scripts/run_backend.sh",
+    "dev:ui": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "test:py": "pytest",
+    "doctor": "scripts/run_doctor.sh",
+    "tts:install": "scripts/install_tts_runtime.sh",
+    "musetalk:install": "scripts/install_musetalk_runtime.sh",
+    "musetalk:check": "scripts/check_musetalk_runtime.py",
+    "neural:install": "scripts/install_neural_runtime.sh",
+    "neural:check": "scripts/run_neural_check.sh",
+    "neural:bench": "scripts/run_neural_benchmark.sh",
+    "start": "scripts/run_local.sh",
+    "setup": "scripts/setup_local.sh"
+  }
+}

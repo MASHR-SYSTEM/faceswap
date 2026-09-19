@@ -1,0 +1,8 @@
+-r requirements-base.lock
+onnxruntime-gpu==1.27.0
+onnx==1.22.0
+insightface==1.0.1
+mediapipe==0.10.35
+onnxconverter-common==1.16.0
+# NVIDIA drivers/CUDA/cuDNN remain separately installed platform prerequisites.
+# This profile must pass real GPU acceptance before it is advertised as supported.
