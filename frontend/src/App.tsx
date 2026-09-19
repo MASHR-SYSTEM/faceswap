@@ -110,6 +110,7 @@ export function App() {
   const [sourceIndex, setSourceIndex] = useState<number | null>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [effectLoaded, setEffectLoaded] = useState(false);
   const [busy, setBusy] = useState<string[]>([]);
   const [backgroundBusy, setBackgroundBusy] = useState(false);
   const [thumbnailVersion, setThumbnailVersion] = useState(0);
@@ -598,6 +599,7 @@ export function App() {
   useEffect(() => {
     void refresh();
     void api.effect().then(current => {
+      setEffectLoaded(true);
       if (!pendingEffect.current && !sendingEffect.current) {
         effectRevision.current = current.revision;
         effectRef.current = current.effect;
@@ -676,7 +678,7 @@ export function App() {
                 <Pause size={18} /> Stop camera
               </button>
             ) : (
-              <button className="primary-button" onClick={() => void start()} disabled={!connected || !hydratedControls.current || busy.includes('all')}>
+              <button className="primary-button" onClick={() => void start()} disabled={!connected || !effectLoaded || !hydratedControls.current || busy.includes('all')}>
                 <Play size={18} /> Start camera
               </button>
             )}
@@ -1148,7 +1150,7 @@ export function App() {
               onChange={(event) => patchEffect({ provider: event.target.value as EffectConfig["provider"] })}
             >
               <option value="auto">Auto</option>
-              <option value="tensorrt">TensorRT</option>
+              {capabilities?.platform !== "Windows" && <option value="tensorrt">TensorRT</option>}
               <option value="cuda">CUDA</option>
               <option value="cpu">CPU</option>
             </select>

@@ -178,7 +178,14 @@ class VoiceSession(WorkerLifecycle):
             windows = platform.system() == "Windows"
             if windows and config.synthesis_mode != "dsp":
                 raise RuntimeError("Windows currently supports DSP voice only")
-            pulse_source = _pulse_source_for_input_device(config.input_device)
+            input_device = config.input_device
+            if windows and input_device is None:
+                microphones = [d for d in list_audio_devices() if d.max_input_channels
+                               and not any(word in d.name.lower() for word in ("cable", "virtual", "loopback", "stereo mix"))]
+                if not microphones:
+                    raise RuntimeError("Select a physical microphone before starting voice")
+                input_device = microphones[0].index
+            pulse_source = _pulse_source_for_input_device(input_device)
             pulse_sink = _pulse_sink_for_output_device(config.monitor_output_device)
             needs_sounddevice = pulse_source is None or (config.monitor_enabled and pulse_sink is None)
             sounddevice = _import_sounddevice() if needs_sounddevice else None
@@ -226,15 +233,13 @@ class VoiceSession(WorkerLifecycle):
 
             with self._lock:
                 self._state.input_backend = "pulse" if pulse_source is not None else "portaudio"
-                self._state.input_name = pulse_source.description if pulse_source is not None else _sounddevice_input_name(sounddevice, config.input_device)
+                self._state.input_name = pulse_source.description if pulse_source is not None else _sounddevice_input_name(sounddevice, input_device)
                 self._state.virtual_mic_ready = route.source_present if config.virtual_mic else False
                 self._state.virtual_sink_name = route.sink_name
                 self._state.virtual_source_name = route.source_name
                 self._state.monitor_ready = monitor is not None
                 self._state.monitor_output_name = monitor.output_name if monitor is not None else None
                 self._update_synthesis_state_locked(processor)
-
-            self._mark_ready()
 
             def process_block(indata: np.ndarray, status: object | None = None) -> None:
                 start = time.perf_counter()
@@ -274,6 +279,7 @@ class VoiceSession(WorkerLifecycle):
                     block_size=config.block_size,
                 )
                 pulse_reader.start()
+                self._mark_ready()
                 block_seconds = config.block_size / float(config.sample_rate)
                 while not self._stop_event.is_set():
                     block = pulse_reader.read_block(timeout=block_seconds)
@@ -308,10 +314,11 @@ class VoiceSession(WorkerLifecycle):
                     blocksize=config.block_size,
                     channels=1,
                     dtype="float32",
-                    device=config.input_device,
+                    device=input_device,
                     callback=callback,
                 )
                 with stream:
+                    self._mark_ready()
                     counted_drops = 0
                     while not self._stop_event.is_set():
                         try:
