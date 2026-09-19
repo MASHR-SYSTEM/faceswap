@@ -53,6 +53,26 @@ def main():
                     destination = notices / name / str(entry).replace('..', '_')
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(source, destination)
+    # Minified frontend bundles still require their dependency notices.
+    frontend_inventory = []
+    lock = json.loads((ROOT / 'frontend/package-lock.json').read_text())
+    for relative, metadata in sorted(lock.get('packages', {}).items()):
+        if not relative or metadata.get('dev'):
+            continue
+        package = ROOT / 'frontend' / relative
+        manifest = package / 'package.json'
+        if not manifest.is_file():
+            raise RuntimeError(f'Missing frontend dependency: {relative}; run npm ci')
+        identity = json.loads(manifest.read_text())
+        name = identity.get('name', relative)
+        frontend_inventory.append({'name': name, 'version': identity.get('version'),
+                                   'license': identity.get('license')})
+        for source in package.iterdir():
+            if source.is_file() and any(term in source.name.lower() for term in ('license', 'copying', 'notice')):
+                destination = notices / 'frontend' / name / source.name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
+    (bundle / 'frontend-dependency-inventory.json').write_text(json.dumps(frontend_inventory, indent=2))
     for name in ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'):
         shutil.copy2(ROOT / name, bundle / name)
     (bundle / 'dependency-inventory.json').write_text(json.dumps(inventory, indent=2))
