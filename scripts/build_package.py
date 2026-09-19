@@ -61,6 +61,8 @@ def main():
             continue
         package = ROOT / 'frontend' / relative
         manifest = package / 'package.json'
+        if not manifest.is_file() and metadata.get('optional'):
+            continue  # Platform-specific optional dependency not included in this build.
         if not manifest.is_file():
             raise RuntimeError(f'Missing frontend dependency: {relative}; run npm ci')
         identity = json.loads(manifest.read_text())
