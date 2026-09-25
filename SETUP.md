@@ -6,8 +6,11 @@ performance needs a separately verified GPU configuration.
 
 ## Install and first launch
 
-Download the signed Windows installer from https://face.mashr.ai/, confirm the
-publisher and run it. No Python, Node or Git is needed. The installer creates a
+Download the Windows alpha installer from https://face.mashr.ai/ and verify its
+published SHA-256 checksum. This prerelease is unsigned: Windows will normally show
+“Windows protected your PC.” Choose More info and Run anyway only if the checksum
+matches and you accept the risk of testing early software. No Python, Node or Git
+is needed. The installer creates a
 Start menu shortcut and an ordinary Add/Remove Programs entry. The launcher starts a local server and opens
 http://127.0.0.1:7865. Use Camera preview or Cartoon in **Setup & help** to test the
 standard webcam before installing optional models. IR and virtual cameras must

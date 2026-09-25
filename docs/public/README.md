@@ -8,7 +8,9 @@ validated. This is not a promise of realtime neural performance on every compute
 
 ## Use
 
-On Windows, download and run the signed installer from the website, then launch
+On Windows, download the alpha installer from the website, verify its published
+SHA-256 checksum, and run it. This prerelease is unsigned, so Windows will normally
+show a SmartScreen warning. Then launch
 **MASHr FaceSwap** from the Start menu. The launcher opens http://127.0.0.1:7865. Choose a camera effect
 and press **Start camera**. Camera preview and cartoon require no neural models.
 Use **Stop all** to release active camera and audio sessions, then **Exit** in the
