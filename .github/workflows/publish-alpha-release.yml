@@ -1,0 +1,48 @@
+name: Publish unsigned alpha release
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful release candidate validation run
+        required: true
+      tag:
+        description: New alpha tag (for example v0.2.0-alpha.4)
+        required: true
+      target:
+        description: Exact validated commit SHA
+        required: true
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify validated source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          conclusion=$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" --jq .conclusion)
+          revision=$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" --jq .head_sha)
+          test "$conclusion" = success
+          test "$revision" = "$TARGET"
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          name: FaceSwap-candidate-windows-2022-base
+          path: candidate
+      - name: Verify and publish installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          cd candidate/installer
+          sha256sum --check SHA256SUMS.txt
+          installer=$(find . -maxdepth 1 -name '*-setup.exe' -print -quit)
+          test -n "$installer"
+          gh release create "$TAG" "$installer" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$TARGET" --prerelease --title "MASHr FaceSwap $TAG" --notes "Unsigned Windows alpha with improved integrated-camera negotiation and expanded on-screen diagnostics. Windows SmartScreen may show an Unknown publisher warning."
