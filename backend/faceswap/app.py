@@ -19,6 +19,7 @@ from . import __version__
 from PIL import Image
 
 from .camera import list_camera_devices, list_v4l2loopback_devices
+from .diagnostics import clear as clear_diagnostics, entries as diagnostic_entries, record
 from .avatar import AvatarStudio, MuseTalkConfig
 from .schemas import (
     AssetUploadResponse,
@@ -102,11 +103,24 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="FaceSwap Local", version=__version__, lifespan=lifespan)
+record(f"FaceSwap {__version__} started on {platform.system()}; OpenCV {cv2.__version__}")
 
 
 @app.exception_handler(SessionBusy)
 async def session_busy(_request, exc):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.get("/api/diagnostics")
+def diagnostics():
+    return {"entries": diagnostic_entries()}
+
+
+@app.delete("/api/diagnostics")
+def reset_diagnostics():
+    clear_diagnostics()
+    record("Diagnostic log cleared")
+    return {"entries": diagnostic_entries()}
 
 app.add_middleware(
     CORSMiddleware,

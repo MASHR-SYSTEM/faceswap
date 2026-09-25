@@ -109,4 +109,14 @@ def _windows_cameras() -> list[DeviceInfo]:
 
 def capture_backend():
     import cv2
-    return cv2.CAP_DSHOW if platform.system() == 'Windows' else cv2.CAP_V4L2
+    return capture_backends()[0][0]
+
+
+def capture_backends() -> list[tuple[int, str]]:
+    """Backends in reliability order for live capture on this platform."""
+    import cv2
+    if platform.system() == 'Windows':
+        # Media Foundation handles modern integrated cameras more reliably.
+        # DirectShow remains a fallback for older and third-party webcams.
+        return [(cv2.CAP_MSMF, 'Media Foundation'), (cv2.CAP_DSHOW, 'DirectShow')]
+    return [(cv2.CAP_V4L2, 'V4L2')]

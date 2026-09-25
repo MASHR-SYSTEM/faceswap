@@ -139,6 +139,7 @@ export function App() {
     "Welcome. This avatar was generated from a reference voice and a target image."
   );
   const [previewNonce, setPreviewNonce] = useState(Date.now());
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
   const targetUploadInputRef = useRef<HTMLInputElement | null>(null);
   const backgroundUploadInputRef = useRef<HTMLInputElement | null>(null);
   const avatarVoiceRecorderRef = useRef<MediaRecorder | null>(null);
@@ -622,13 +623,14 @@ export function App() {
     const id = window.setInterval(() => {
       if (activeCommands.current.size) return;
       const epoch = commandEpoch.current;
-      Promise.all([api.status(), api.voiceStatus(), AVATAR_STUDIO_ENABLED ? api.avatarJobs() : Promise.resolve([])])
-        .then(([nextStatus, nextVoiceStatus, nextAvatarJobs]) => {
+      Promise.all([api.status(), api.voiceStatus(), AVATAR_STUDIO_ENABLED ? api.avatarJobs() : Promise.resolve([]), api.diagnostics()])
+        .then(([nextStatus, nextVoiceStatus, nextAvatarJobs, nextDiagnostics]) => {
           if (epoch !== commandEpoch.current) return;
           setConnected(true);
           setStatus(nextStatus);
           setVoiceStatus(nextVoiceStatus);
           setAvatarJobs(nextAvatarJobs);
+          setDiagnostics(nextDiagnostics.entries);
         })
         .catch((err) => { setConnected(false); setError(err instanceof Error ? err.message : String(err)); });
     }, 1000);
@@ -1421,6 +1423,15 @@ export function App() {
           </details>
         </footer>
         </div>
+        <section className="diagnostics-panel" aria-label="Camera diagnostic log">
+          <div className="diagnostics-header">
+            <strong>Camera diagnostics</strong>
+            <span>{status?.capture_backend ?? "waiting"}{status?.capture_format ? ` · ${status.capture_format}` : ""}</span>
+            <button className="secondary-button" onClick={() => void navigator.clipboard.writeText(diagnostics.join('\n'))}>Copy</button>
+            <button className="secondary-button" onClick={() => void api.clearDiagnostics().then(result => setDiagnostics(result.entries))}>Clear</button>
+          </div>
+          <pre>{diagnostics.length ? diagnostics.join('\n') : "Start the camera to collect diagnostics."}</pre>
+        </section>
       </aside>
     </main>
   );

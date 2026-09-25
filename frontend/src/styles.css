@@ -852,6 +852,11 @@ input[type="range"] {
 /* Bounded desktop workspace; controls retain the requested width and type scale. */
 .control-tree { min-height: 0; min-width: 0; }
 .persistent-actions { flex: none; background: #151b1e; z-index: 5; }
+.diagnostics-panel { flex: none; display: grid; gap: 6px; padding: 10px 4px 0; border-top: 1px solid rgba(255,255,255,.14); }
+.diagnostics-header { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: calc(12px * var(--control-font-scale, 1)); }
+.diagnostics-header span { color: #9fb0b8; margin-right: auto; }
+.diagnostics-header button { padding: 4px 8px; min-height: 28px; }
+.diagnostics-panel pre { margin: 0; padding: 8px; max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 6px; background: #080b0d; color: #c8d7df; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; user-select: text; }
 .persistent-actions .action-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .persistent-actions button { flex: 1 1 160px; }
 .persistent-actions .rail-status { margin-bottom: 10px; }

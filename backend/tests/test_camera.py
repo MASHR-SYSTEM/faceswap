@@ -2,10 +2,12 @@ import errno
 import struct
 
 import pytest
+import numpy as np
 
 from faceswap import camera
 from faceswap.schemas import DeviceInfo, SessionStartRequest
 from faceswap.session import _resolve_source_index
+from faceswap.session import _looks_like_scanline_corruption, _open_capture
 
 
 def device_tree(tmp_path, monkeypatch, nodes):
@@ -84,3 +86,33 @@ def test_start_missing_camera_returns_actionable_error(monkeypatch):
     response = TestClient(app).post('/api/session/start', json={})
     assert response.status_code == 400
     assert 'No standard webcam' in response.json()['detail']
+
+
+def test_scanline_corruption_is_rejected_but_black_privacy_frame_is_valid():
+    black = np.zeros((480, 640, 3), np.uint8)
+    scanline = black.copy()
+    scanline[0, :, 0] = np.arange(640, dtype=np.uint16).astype(np.uint8)
+    scanline[0, :, 1] = 255
+    assert not _looks_like_scanline_corruption(black)
+    assert _looks_like_scanline_corruption(scanline)
+
+
+def test_windows_capture_falls_back_after_corrupt_stream(monkeypatch):
+    corrupt = np.zeros((480, 640, 3), np.uint8)
+    corrupt[0, :, 1] = 255
+    good = np.full((480, 640, 3), 80, np.uint8)
+    class Capture:
+        def __init__(self, frame): self.frame, self.released = frame, False
+        def set(self, *_): return True
+        def isOpened(self): return True
+        def read(self): return True, self.frame
+        def release(self): self.released = True
+    first, second = Capture(corrupt), Capture(good)
+    captures = iter((first, second))
+    monkeypatch.setattr('faceswap.session.capture_backends', lambda: [(1, 'Media Foundation'), (2, 'DirectShow')])
+    monkeypatch.setattr('faceswap.session.cv2.VideoCapture', lambda *_: next(captures))
+    request = SessionStartRequest(source_index=0)
+    capture, name, frame = _open_capture(request)
+    assert first.released
+    assert capture is second and name == 'DirectShow'
+    assert np.array_equal(frame, good)

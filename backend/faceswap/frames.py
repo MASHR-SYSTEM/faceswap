@@ -4,13 +4,13 @@ import time
 
 
 class LatestCapture:
-    def __init__(self, capture):
+    def __init__(self, capture, first_frame=None):
         self.capture = capture
         self.condition = threading.Condition()
         self.stop_event = threading.Event()
-        self.frame = None
-        self.sequence = 0
-        self.timestamp = 0.0
+        self.frame = first_frame.copy(order='C') if first_frame is not None else None
+        self.sequence = 1 if first_frame is not None else 0
+        self.timestamp = time.monotonic() if first_frame is not None else 0.0
         self.error = None
         self.thread = threading.Thread(target=self._read, name='faceswap-capture', daemon=True)
 

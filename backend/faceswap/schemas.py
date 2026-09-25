@@ -261,6 +261,8 @@ class SessionStatus(BaseModel):
     background_latency_ms: float = 0.0
     background_segment_ms: float = 0.0
     background_error: str | None = None
+    capture_backend: str | None = None
+    capture_format: str | None = None
 
 
 class DeviceInfo(BaseModel):

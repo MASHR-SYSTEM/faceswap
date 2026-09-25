@@ -248,6 +248,12 @@ export interface SessionStatus {
   background_latency_ms: number;
   background_segment_ms: number;
   background_error?: string | null;
+  capture_backend?: string | null;
+  capture_format?: string | null;
+}
+
+export interface DiagnosticLog {
+  entries: string[];
 }
 
 export interface CapabilityStatus {

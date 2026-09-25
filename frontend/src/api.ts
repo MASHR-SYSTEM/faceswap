@@ -20,6 +20,7 @@ import type {
   VoiceStatus
   , SetupStatus
   , SetupJob
+  , DiagnosticLog
 } from "./types";
 
 async function jsonRequest<T>(url: string, options?: RequestInit): Promise<T> {
@@ -41,6 +42,8 @@ async function jsonRequest<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  diagnostics: () => jsonRequest<DiagnosticLog>("/api/diagnostics"),
+  clearDiagnostics: () => jsonRequest<DiagnosticLog>("/api/diagnostics", { method: "DELETE" }),
   setup: () => jsonRequest<SetupStatus>("/api/setup"),
   installSetup: (acceptTerms: boolean) => jsonRequest<SetupJob>("/api/setup/install", {
     method: "POST", body: JSON.stringify({ accept_terms: acceptTerms })

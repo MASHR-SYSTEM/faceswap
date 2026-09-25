@@ -14,7 +14,8 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from .camera import list_camera_devices, capture_backend
+from .camera import list_camera_devices, capture_backends
+from .diagnostics import record
 from .processor import FrameProcessor
 from .settings import get_settings
 from .lifecycle import SessionBusy
@@ -54,6 +55,8 @@ class _RuntimeState:
     background_latency_ms: float = 0.0
     background_segment_ms: float = 0.0
     background_error: str | None = None
+    capture_backend: str | None = None
+    capture_format: str | None = None
 
 
 class VideoSession(WorkerLifecycle):
@@ -176,25 +179,24 @@ class VideoSession(WorkerLifecycle):
         reader = None
         output_worker = None
         try:
-            capture = cv2.VideoCapture(request.source_index, capture_backend())
-            capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            capture.set(cv2.CAP_PROP_FRAME_WIDTH, request.width)
-            capture.set(cv2.CAP_PROP_FRAME_HEIGHT, request.height)
-            if request.fps is not None:
-                capture.set(cv2.CAP_PROP_FPS, request.fps)
-            if not capture.isOpened():
-                raise RuntimeError(f"Could not open camera {request.source_index}; it may be busy or inaccessible. No other camera was selected.")
+            record(f"Camera start requested: index={request.source_index}, {request.width}x{request.height}, fps={request.fps or 'default'}")
+            capture, backend_name, first_frame = _open_capture(request)
 
             actual_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)) or request.width
             actual_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)) or request.height
             detected_fps = capture.get(cv2.CAP_PROP_FPS)
+            capture_format = _capture_format(capture)
+            record(f"Camera opened with {backend_name}: {actual_width}x{actual_height}, fps={detected_fps:.2f}, format={capture_format}")
+            with self._lock:
+                self._state.capture_backend = backend_name
+                self._state.capture_format = capture_format
             virtual_fps = request.fps or (int(round(detected_fps)) if detected_fps and detected_fps > 0 else 30)
 
             if request.virtual_camera:
                 virtual_camera = self._open_virtual_camera(actual_width, actual_height, virtual_fps)
 
                 output_worker = LatestOutput(virtual_camera)
-            reader = LatestCapture(capture).start()
+            reader = LatestCapture(capture, first_frame=first_frame).start()
             last_sequence = 0
             self._mark_ready()
             tick_start = time.monotonic()
@@ -211,6 +213,7 @@ class VideoSession(WorkerLifecycle):
                     self._state.capture_sequence = sequence
                 last_sequence = sequence
 
+                frame = _normalise_frame(frame)
                 effect = self._current_effect()
                 processed = self._processor.process(frame, effect)
                 fps_window_frames += 1
@@ -253,6 +256,7 @@ class VideoSession(WorkerLifecycle):
                             fps_window_start = now
                         self._preview_condition.notify_all()
         except Exception as exc:
+            record(f"Camera error: {exc}")
             with self._preview_condition:
                 self._state.last_error = str(exc)
                 self._state.running = False
@@ -271,6 +275,7 @@ class VideoSession(WorkerLifecycle):
                 self._state.running = False
                 self._state.virtual_camera_ready = False
                 self._state.virtual_camera_state = "disabled"
+            record("Camera session stopped")
 
     def _open_virtual_camera(self, width: int, height: int, fps: int):
         from .output import open_output
@@ -292,3 +297,70 @@ def _resolve_source_index(requested_index: int | None, source_id: str | None = N
     if not any(device.index == requested_index for device in devices):
         raise ValueError(f"Selected camera {requested_index} is unavailable. Refresh the camera list and select a device.")
     return requested_index
+
+
+def _open_capture(request: SessionStartRequest):
+    failures: list[str] = []
+    for backend, backend_name in capture_backends():
+        capture = cv2.VideoCapture(request.source_index, backend)
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, request.width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, request.height)
+        if request.fps is not None:
+            capture.set(cv2.CAP_PROP_FPS, request.fps)
+        if not capture.isOpened():
+            failures.append(f"{backend_name}: could not open")
+            record(f"{backend_name} could not open camera {request.source_index}")
+            capture.release()
+            continue
+
+        first_frame = None
+        reason = "no readable frame"
+        for _ in range(12):
+            ok, candidate = capture.read()
+            if not ok or candidate is None:
+                continue
+            try:
+                candidate = _normalise_frame(candidate)
+            except ValueError as exc:
+                reason = str(exc)
+                continue
+            if _looks_like_scanline_corruption(candidate):
+                reason = "black frame with pixels concentrated in a scanline"
+                continue
+            first_frame = candidate.copy(order='C')
+            break
+        if first_frame is not None:
+            return capture, backend_name, first_frame
+        failures.append(f"{backend_name}: {reason}")
+        record(f"Rejected {backend_name} camera stream: {reason}; trying fallback")
+        capture.release()
+
+    detail = "; ".join(failures)
+    raise RuntimeError(f"Camera opened but did not provide a valid image ({detail}). Close other camera apps and try again.")
+
+
+def _normalise_frame(frame: np.ndarray) -> np.ndarray:
+    if frame.ndim == 2:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    elif frame.ndim == 3 and frame.shape[2] == 4:
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    if frame.ndim != 3 or frame.shape[2] != 3 or frame.shape[0] < 2 or frame.shape[1] < 2:
+        raise ValueError(f"unsupported frame shape {frame.shape}")
+    return np.ascontiguousarray(frame, dtype=np.uint8)
+
+
+def _looks_like_scanline_corruption(frame: np.ndarray) -> bool:
+    brightness = np.max(frame, axis=2)
+    active_by_row = np.count_nonzero(brightness > 12, axis=1)
+    active = int(active_by_row.sum())
+    if active == 0:
+        return False  # A closed privacy shutter can legitimately be black.
+    active_rows = int(np.count_nonzero(active_by_row))
+    return active < frame.shape[0] * frame.shape[1] * 0.08 and active_rows <= max(4, frame.shape[0] // 50)
+
+
+def _capture_format(capture) -> str:
+    value = int(capture.get(cv2.CAP_PROP_FOURCC))
+    fourcc = ''.join(chr((value >> (8 * index)) & 0xff) for index in range(4)).strip('\x00 ') or 'unknown'
+    return fourcc
