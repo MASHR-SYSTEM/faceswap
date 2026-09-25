@@ -4,10 +4,11 @@ Release targets: Windows 11 x64 and Ubuntu 24.04 x86-64. ARM and macOS are not
 supported by this alpha. CPU builds prioritise compatibility; neural realtime
 performance needs a separately verified GPU configuration.
 
-## First launch
+## Install and first launch
 
-Extract the entire archive before running the launcher. No Python, Node or Git
-is needed for a packaged release. The launcher starts a local server and opens
+Download the signed Windows installer from https://face.mashr.ai/, confirm the
+publisher and run it. No Python, Node or Git is needed. The installer creates a
+Start menu shortcut and an ordinary Add/Remove Programs entry. The launcher starts a local server and opens
 http://127.0.0.1:7865. Use Camera preview or Cartoon in **Setup & help** to test the
 standard webcam before installing optional models. IR and virtual cameras must
 be selected explicitly. If your camera is busy, close its other owner and retry.
@@ -20,11 +21,12 @@ keep their existing project-local data; `FACESWAP_DATA_DIR` overrides its locati
 ## Optional neural models
 
 Use only assets whose terms allow your intended use. InsightFace code is MIT;
-its supplied model weights have separate restrictions. FaceSwap neither supplies
-those weights nor automatically downloads them. Consult
-https://github.com/deepinsight/insightface#license before obtaining models.
+its supplied model weights have separate non-commercial research restrictions.
+The first-launch setup shows the download size and requires an explicit terms
+acknowledgement before downloading directly from the official upstream hosts.
+Files resume after network failures and are checked against pinned SHA-256 hashes.
 
-Place compatible files under the models directory shown in **Setup & help**:
+The guided setup installs these files under the models directory shown in **Setup & help**:
 
 ```
 models/inswapper_128.onnx
@@ -32,11 +34,11 @@ models/insightface/models/buffalo_l/*.onnx
 models/mediapipe/selfie_segmenter_landscape.tflite
 ```
 
-The last model is needed only for background segmentation and has its own source
-and terms. Use an optional neural-enabled package/runtime, upload a target image,
-select Neural face swap and refresh devices. A missing/invalid model is reported;
+Existing valid manually installed files are recognized. The last model is needed
+only for background segmentation. A missing/invalid model is reported;
 a plain camera image is not a successful neural swap. CPU inference makes no
-realtime promise. CUDA requires compatible NVIDIA drivers/runtime libraries.
+realtime promise. The Windows package falls back to CPU. NVIDIA acceleration
+requires compatible NVIDIA drivers plus CUDA 13 and cuDNN 9 installed separately.
 
 ## Optional virtual camera
 

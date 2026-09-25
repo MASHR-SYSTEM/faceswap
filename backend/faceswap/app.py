@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse
 from .lifecycle import SessionBusy
+from . import __version__
 from PIL import Image
 
 from .camera import list_camera_devices, list_v4l2loopback_devices
@@ -30,6 +31,7 @@ from .schemas import (
     SessionEffectUpdateRequest,
     SessionStartRequest,
     SessionStatus,
+    SetupInstallRequest,
     TTSSpeakRequest,
     TTSStatus,
     TTSVoiceInfo,
@@ -39,6 +41,7 @@ from .schemas import (
     VoiceStartRequest,
     VoiceStatus,
 )
+from .model_setup import SetupManager
 from .session import VideoSession
 from .settings import get_settings, PACKAGED, ROOT
 from .tts import TTSSession, kokoro_available
@@ -58,6 +61,7 @@ settings.assets_dir.mkdir(parents=True, exist_ok=True)
 settings.models_dir.mkdir(parents=True, exist_ok=True)
 settings.neural_cache_dir.mkdir(parents=True, exist_ok=True)
 settings.background_model_path.parent.mkdir(parents=True, exist_ok=True)
+setup_manager = SetupManager(settings.models_dir, settings.config_path.parent / "setup.json")
 
 if PACKAGED:
     for source in (ROOT / 'assets').glob('*.png'):
@@ -67,8 +71,10 @@ if PACKAGED:
     if not settings.config_path.exists():
         from .schemas import EffectConfig
         settings.config_path.parent.mkdir(parents=True, exist_ok=True)
-        settings.config_path.write_text(EffectConfig(mode='passthrough', provider='cpu',
-            smoothing=.5, y_offset=.5, temporal_smoothing=.4).model_dump_json())
+        settings.config_path.write_text(EffectConfig(
+            background_enabled=True,
+            background_path="assets/ordo-basement-cyber-warehouse-photoreal.png",
+        ).model_dump_json())
 
 session = VideoSession(config_path=settings.config_path)
 voice_session = VoiceSession()
@@ -95,7 +101,7 @@ async def lifespan(_app):
     await asyncio.to_thread(avatar_studio.close)
 
 
-app = FastAPI(title="FaceSwap Local", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="FaceSwap Local", version=__version__, lifespan=lifespan)
 
 
 @app.exception_handler(SessionBusy)
@@ -125,7 +131,7 @@ def get_capabilities() -> CapabilityStatus:
     voice_route = get_virtual_mic_route_status()
     musetalk_status, musetalk_detail = avatar_studio.musetalk_status()
     return CapabilityStatus(
-        target_presets=[str(p.name) for p in settings.assets_dir.glob("*.png") if p.name in {"aging-cyber-monk-target.png", "default-target.png", "insightface-sea-monster-yellow-eyes-target.png", "ordo-mentis-dei-target.png"}],
+        target_presets=[str(p.name) for p in settings.assets_dir.glob("*.png") if p.name in {"aging-cyber-monk-target.png", "default-target.png", "optimus.png", "mashr-female.png"}],
         platform=platform.system(),
         virtual_camera_backend="unitycapture" if platform.system() == "Windows" else "v4l2loopback",
         voice_modes=["dsp"] if platform.system() == "Windows" else ["dsp", "speech_to_speech"],
@@ -170,6 +176,45 @@ def get_devices() -> list[DeviceInfo]:
     return list_camera_devices()
 
 
+@app.get("/api/setup")
+def get_setup():
+    return setup_manager.state()
+
+
+@app.post("/api/setup/install", status_code=202)
+def install_setup(request: SetupInstallRequest):
+    try:
+        return setup_manager.start(accept_terms=request.accept_terms, component_ids=request.components)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/setup/jobs/{job_id}")
+def get_setup_job(job_id: str):
+    job = setup_manager.job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Setup job not found")
+    return job
+
+
+@app.delete("/api/setup/jobs/{job_id}")
+def cancel_setup_job(job_id: str):
+    job = setup_manager.cancel(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Setup job not found")
+    return job
+
+
+@app.post("/api/setup/verify")
+def verify_setup():
+    return setup_manager.verify()
+
+
+@app.post("/api/setup/complete")
+def complete_setup():
+    return setup_manager.complete()
+
+
 @app.get("/api/session/config")
 def session_configuration():
     with session._lock:
@@ -178,6 +223,17 @@ def session_configuration():
 
 @app.post("/api/session/start", response_model=SessionStatus)
 def start_session(request: SessionStartRequest) -> SessionStatus:
+    setup = setup_manager.state()
+    missing = []
+    by_id = {item["id"]: item for item in setup["components"]}
+    effect_was_selected = "effect" in request.model_fields_set
+    if effect_was_selected and request.effect.mode == "onnx_faceswap":
+        missing.extend(item for item in ("inswapper", "buffalo_l") if not by_id[item]["ready"])
+    if effect_was_selected and request.effect.background_enabled and not by_id["background"]["ready"]:
+        missing.append("background")
+    if missing:
+        return JSONResponse(status_code=409, content={"code": "setup_required", "components": missing,
+            "message": "Download the selected optional models before using this effect."})
     try:
         return session.start(request)
     except ValueError as exc:

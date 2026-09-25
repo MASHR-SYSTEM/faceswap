@@ -28,6 +28,8 @@ import type {
   VoiceConfig,
   VoiceRouteStatus,
   VoiceStatus
+  , SetupStatus
+  , SetupJob
 } from "./types";
 
 const defaultEffect: EffectConfig = {
@@ -65,12 +67,8 @@ const targetOptions: Array<{
   effectOverrides?: Partial<Pick<EffectConfig, "strength" | "scale" | "y_offset" | "background_enabled">>;
 }> = [
   { label: "Aging cyber monk", path: "assets/aging-cyber-monk-target.png" },
-  {
-    label: "Sea monster yellow eyes",
-    path: "assets/insightface-sea-monster-yellow-eyes-target.png",
-    effectOverrides: { background_enabled: false }
-  },
-  { label: "Ordo Mentis Dei", path: "assets/ordo-mentis-dei-target.png" },
+  { label: "Jack", path: "assets/optimus.png" },
+  { label: "Jane", path: "assets/mashr-female.png" },
   { label: "Default target", path: "assets/default-target.png" }
 ];
 
@@ -104,6 +102,9 @@ export function App() {
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | null>(null);
   const [voiceRoute, setVoiceRoute] = useState<VoiceRouteStatus | null>(null);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+  const [setupJob, setSetupJob] = useState<SetupJob | null>(null);
+  const [setupTerms, setSetupTerms] = useState(false);
   const [avatarProfiles, setAvatarProfiles] = useState<AvatarProfile[]>([]);
   const [avatarJobs, setAvatarJobs] = useState<AvatarRenderJob[]>([]);
   const [effect, setEffect] = useState<EffectConfig>(defaultEffect);
@@ -214,7 +215,14 @@ export function App() {
   const voicePending = Boolean(voiceStatus?.running && voiceStatus.active_config &&
     Object.entries(voiceStatus.active_config).some(([key, value]) =>
       (voice[key as keyof VoiceConfig] ?? null) !== (value ?? null)));
-  const neuralAvailable = Boolean(capabilities?.onnxruntime && capabilities?.insightface && capabilities?.default_model_present);
+  const neuralAvailable = Boolean(capabilities?.onnxruntime && capabilities?.insightface &&
+    setup?.components.filter(item => item.id !== "background").every(item => item.ready));
+
+  async function beginModelSetup() {
+    setError(null);
+    try { setSetupJob(await api.installSetup(setupTerms)); }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+  }
   async function command(key: string, work: () => Promise<void>) {
     if (activeCommands.current.has(key) || activeCommands.current.has('all')) return;
     activeCommands.current.add(key);
@@ -292,7 +300,8 @@ export function App() {
         nextAudioDevices,
         nextVoiceRoute,
         nextAvatarProfiles,
-        nextAvatarJobs
+        nextAvatarJobs,
+        nextSetup
       ] = await Promise.all([
         api.status(),
         api.capabilities(),
@@ -301,11 +310,14 @@ export function App() {
         api.audioDevices(),
         api.voiceRoute(),
         AVATAR_STUDIO_ENABLED ? api.avatarProfiles() : Promise.resolve([]),
-        AVATAR_STUDIO_ENABLED ? api.avatarJobs() : Promise.resolve([])
+        AVATAR_STUDIO_ENABLED ? api.avatarJobs() : Promise.resolve([]),
+        api.setup()
       ]);
       setStatus(nextStatus);
       setVoiceStatus(nextVoiceStatus);
       setVoiceRoute(nextVoiceRoute);
+      setSetup(nextSetup);
+      setSetupTerms(nextSetup.terms_accepted);
       setCapabilities(nextCapabilities);
       setConnected(true);
       if (!hydratedControls.current) {
@@ -628,6 +640,20 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!setupJob || ["ready", "error", "cancelled"].includes(setupJob.state)) return;
+    const id = window.setInterval(() => {
+      api.setupJob(setupJob.id).then(async next => {
+        setSetupJob(next);
+        if (next.state === "ready") {
+          setSetup(await api.completeSetup());
+          setCapabilities(await api.capabilities());
+        }
+      }).catch(err => setError(err instanceof Error ? err.message : String(err)));
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [setupJob?.id, setupJob?.state]);
+
   return (
     <main className="app-shell">
       <section className="preview-stage" aria-label="Live preview">
@@ -692,7 +718,7 @@ export function App() {
           {(error || status?.last_error || voiceStatus?.last_error) && <p className="control-error" role="alert">{error ?? status?.last_error ?? voiceStatus?.last_error}</p>}
         </div>
         <div className="control-tree">
-        <ControlGroup title="Setup & help" icon={<CheckCircle2 size={18} />}>
+        <ControlGroup title="Setup & help" icon={<CheckCircle2 size={18} />} defaultOpen>
           <p className="section-help">Runs on this computer. Camera and microphone start only when you choose Start.</p>
           <label className="model-path-field"><span>Camera effect</span>
             <select aria-label="Camera effect" value={effect.mode} onChange={e => patchEffect({mode: e.target.value as EffectConfig['mode']})}>
@@ -703,10 +729,34 @@ export function App() {
               {effect.mode === 'target_head' && <option value="target_head">Target overlay</option>}
             </select>
           </label>
-          {(effect.swap_backend ?? "inswapper") === "inswapper" && !neuralAvailable && <p className="section-help">Neural swap needs its optional runtime and separately licensed models. Camera preview and cartoon work without them.</p>}
-          <p className="section-help">Copy compatible model files into <code>{capabilities?.models_dir ?? 'the models folder'}</code>, then refresh devices. Missing or invalid models are reported when starting neural swap.</p>
+          {setup && !setup.ready && (
+            <div className="setup-card">
+              <strong>Finish optional model setup</strong>
+              <p>Face swap and background are selected. Download about {(setup.download_bytes / 1_000_000).toFixed(0)} MB now, or use camera preview without them.</p>
+              <ul className="setup-components">
+                {setup.components.map(item => <li key={item.id}><span>{item.label}</span><span>{item.ready ? "Ready" : `${(item.size / 1_000_000).toFixed(0)} MB`}</span></li>)}
+              </ul>
+              <label className="setup-terms">
+                <input type="checkbox" checked={setupTerms} onChange={event => setSetupTerms(event.target.checked)} />
+                <span>I confirm my use is eligible under the <a href={setup.terms_url} target="_blank" rel="noreferrer">InsightFace non-commercial research terms</a>.</span>
+              </label>
+              {setupJob && !["ready", "error", "cancelled"].includes(setupJob.state) ? (
+                <>
+                  <progress max={1} value={setupJob.progress} aria-label="Model download progress" />
+                  <p className="section-help">{setupJob.state} — {Math.round(setupJob.progress * 100)}%</p>
+                  <button className="secondary-button" onClick={() => void api.cancelSetup(setupJob.id).then(setSetupJob)}>Cancel download</button>
+                </>
+              ) : (
+                <button className="primary-button" disabled={!setupTerms} onClick={() => void beginModelSetup()}>Download and set up</button>
+              )}
+              {setupJob?.state === "error" && <p className="control-error">{setupJob.error} You can retry safely.</p>}
+              <p className="section-help">Files stay on this computer. Existing valid files are kept.</p>
+            </div>
+          )}
+          {setup?.ready && <p className="setup-ready"><CheckCircle2 size={16} /> Optional models are ready.</p>}
+          {!neuralAvailable && capabilities && (!capabilities.onnxruntime || !capabilities.insightface) && <p className="section-help">This build does not include the neural runtime. Install the current Windows release.</p>}
           <p className="section-help">Virtual camera: {capabilities?.platform === 'Windows' ? 'install UnityCapture separately, then select Unity Video Capture in your call app.' : 'install and load v4l2loopback, then select FaceSwap in your call app.'}</p>
-          <a href="https://faceswap.mashr.ai/#setup" target="_blank" rel="noreferrer">Setup guide</a>
+          <a href="https://face.mashr.ai/#setup" target="_blank" rel="noreferrer">Setup guide</a>
         </ControlGroup>
         <ControlGroup title="Camera & output" icon={<Camera size={18} />}>
           {cameraPending && <div className="pending-settings"><p>Changes apply on restart</p><button className="secondary-button" onClick={() => void start()} disabled={busy.includes('camera-start') || status?.phase === 'stopping'}>Apply &amp; restart camera</button></div>}

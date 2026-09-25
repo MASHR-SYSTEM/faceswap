@@ -102,6 +102,23 @@ textarea {
   background: rgba(20, 67, 51, 0.72);
 }
 
+.setup-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(77, 190, 255, 0.35);
+  border-radius: 10px;
+  background: rgba(34, 91, 122, 0.14);
+}
+
+.setup-card p { margin: 0; }
+.setup-card progress { width: 100%; accent-color: #44d697; }
+.setup-components { display: grid; gap: 5px; padding: 0; margin: 0; list-style: none; }
+.setup-components li { display: flex; justify-content: space-between; gap: 12px; color: #c4d0d5; font-size: 13px; }
+.setup-terms { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; }
+.setup-terms input { margin-top: 3px; }
+.setup-ready { display: flex; align-items: center; gap: 7px; color: #8ee8bd; }
+
 .error-banner,
 .notice-banner {
   position: absolute;

@@ -9,9 +9,23 @@ import platform
 import shutil
 import subprocess
 import sys
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.2.0-alpha.1'
+VERSION = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
+
+
+def windows_version_file() -> Path:
+    numeric = [int(part) for part in VERSION.split('-', 1)[0].split('.')]
+    numeric = (numeric + [0, 0, 0, 0])[:4]
+    if '-' in VERSION:
+        numeric[3] = max(numeric[3], 1)
+    template = (ROOT / 'installer/windows-version.txt.in').read_text(encoding='utf-8')
+    destination = ROOT / 'build/windows-version.txt'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(template.replace('@NUMERIC_VERSION@', ','.join(map(str, numeric)))
+                           .replace('@VERSION@', VERSION), encoding='utf-8')
+    return destination
 
 
 def main():
@@ -22,17 +36,20 @@ def main():
     command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir',
                '--name', 'FaceSwap', '--paths', str(ROOT / 'backend'),
                '--add-data', f'{ROOT / "frontend/dist"}:frontend/dist',
+               '--add-data', f'{ROOT / "pyproject.toml"}:.',
                '--collect-data', 'cv2', '--collect-all', 'sounddevice',
                '--hidden-import', 'faceswap.app', '--hidden-import', 'tkinter',
                '--hidden-import', 'cv2_enumerate_cameras' if platform.system() == 'Windows' else 'fcntl']
+    if platform.system() == 'Windows':
+        command.extend(['--windowed', '--version-file', str(windows_version_file())])
     for module in ('onnxruntime', 'insightface', 'mediapipe', 'onnx', 'onnxconverter_common'):
         if importlib.util.find_spec(module):
             command.extend(['--collect-all', module])
     # Assets are chosen explicitly by the public export; never collect user files.
     for path in sorted((ROOT / 'assets').glob('*.png')):
         if path.name in {'aging-cyber-monk-target.png', 'default-target.png',
-                         'insightface-sea-monster-yellow-eyes-target.png',
-                         'ordo-mentis-dei-target.png', 'ordo-basement-cyber-warehouse-photoreal.png'}:
+                         'optimus.png',
+                         'mashr-female.png', 'ordo-basement-cyber-warehouse-photoreal.png'}:
             command.extend(['--add-data', f'{path}:assets'])
     command.append(str(ROOT / 'backend/launcher.py'))
     subprocess.run(command, cwd=ROOT, check=True)

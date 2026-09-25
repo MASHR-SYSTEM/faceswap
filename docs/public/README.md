@@ -8,17 +8,17 @@ validated. This is not a promise of realtime neural performance on every compute
 
 ## Use
 
-Extract the package for your platform and launch `FaceSwap.exe` (Windows) or
-`FaceSwap` (Linux). The launcher opens http://127.0.0.1:7865. Choose a camera effect
+On Windows, download and run the signed installer from the website, then launch
+**MASHr FaceSwap** from the Start menu. The launcher opens http://127.0.0.1:7865. Choose a camera effect
 and press **Start camera**. Camera preview and cartoon require no neural models.
 Use **Stop all** to release active camera and audio sessions, then **Exit** in the
 launcher to close the server. Closing the browser alone does not stop the app.
 
-Neural face swap requires separately supplied, compatible model files. Those
-weights are not included in this repository and are not licensed under the
-application licence. See [Setup](SETUP.md) and upstream model terms.
+On first use, the app offers to download the current optional models after you
+acknowledge their separate non-commercial research terms. Downloads are resumed,
+checksum-verified, and stored locally; camera preview works if you skip them.
 
-- Website: https://faceswap.mashr.ai/
+- Website and Windows download: https://face.mashr.ai/
 - Source and support: https://github.com/MASHR-SYSTEM/faceswap
 - [Usage](USAGE.md) · [Build from source](BUILD.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

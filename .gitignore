@@ -47,6 +47,8 @@ assets/*
 !assets/insightface-sea-monster-yellow-eyes-target.png
 !assets/ordo-mentis-dei-target.png
 !assets/ordo-basement-cyber-warehouse-photoreal.png
+!assets/optimus.png
+!assets/mashr-female.png
 
 # Local package/browser validation artifacts
 build/

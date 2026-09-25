@@ -23,6 +23,7 @@ async function app(page: Page, modelPath: string | null = null) {
     if (path === '/api/session/effect') { effect = body.effect; revision++; status.effect_revision = revision; result = status; }
     if (path === '/api/devices') result = [{ index: 0, device_id: 'rgb-id', label: 'Standard webcam', kind: 'standard', is_default: true }, { index: 2, device_id: 'ir-id', label: 'Infrared camera', kind: 'infrared' }];
     if (path === '/api/capabilities') result = { platform: 'Linux', onnxruntime: false, insightface: false, default_model_present: false, models_dir: '/user/models', v4l2loopback_devices: [], target_presets: [], voice_modes: ['dsp'], swap_backends: [{ id: 'inswapper', label: 'InSwapper', default_model: 'inswapper_128.onnx' }, { id: 'example', label: 'Example engine', default_model: 'example.onnx' }] };
+    if (path === '/api/setup') result = { terms_url: 'https://example.test/terms', terms_accepted: false, completed: true, download_bytes: 843125212, required_free_bytes: 1200000000, components: [], ready: true };
     if (path === '/api/voice/status') result = voice;
     if (path === '/api/voice/devices') result = [];
     if (path === '/api/voice/virtual-mic') result = { source_present: false };

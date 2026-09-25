@@ -31,9 +31,9 @@ jobs:
       - run: python -m pip install -r requirements-base.lock pyinstaller==6.22.0
       - if: github.event_name == 'workflow_dispatch' && inputs.runtime == 'cpu'
         run: python -m pip install -r requirements-release-cpu.lock
-      - if: github.event_name == 'workflow_dispatch' && inputs.runtime == 'cuda'
+      - if: matrix.os == 'windows-2022'
         run: python -m pip install -r requirements-release-cuda.lock
-      - if: github.event_name == 'workflow_dispatch' && inputs.runtime != 'base'
+      - if: matrix.os == 'windows-2022'
         run: python -m pip install --no-deps -r requirements-model-adapters.lock
       - run: npm ci --prefix frontend
       - run: npm run build
@@ -42,6 +42,11 @@ jobs:
       - run: npm --prefix frontend run test:browser
       - run: python scripts/build_package.py
       - run: python scripts/package_smoke.py
+      - if: matrix.os == 'windows-2022'
+        run: choco install innosetup --no-progress -y
+      - if: matrix.os == 'windows-2022'
+        shell: pwsh
+        run: scripts/build_installer.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: FaceSwap-candidate-${{ matrix.os }}-${{ inputs.runtime || 'base' }}
@@ -49,4 +54,7 @@ jobs:
             dist/FaceSwap-*.zip
             dist/FaceSwap-*.tar.gz
             dist/*.sha256
+            dist/installer/*.exe
+            dist/installer/SHA256SUMS.txt
+            dist/FaceSwap/FaceSwap.exe
           retention-days: 14

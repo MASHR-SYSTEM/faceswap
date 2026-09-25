@@ -291,6 +291,36 @@ export interface CapabilityStatus {
   musetalk_detail?: string | null;
 }
 
+export type SetupComponentState = "missing" | "downloading" | "verifying" | "installing" | "preflighting" | "ready" | "invalid" | "error" | "cancelled";
+
+export interface SetupComponent {
+  id: "inswapper" | "buffalo_l" | "background";
+  label: string;
+  size: number;
+  ready: boolean;
+  state: SetupComponentState;
+}
+
+export interface SetupStatus {
+  terms_url: string;
+  terms_accepted: boolean;
+  completed: boolean;
+  download_bytes: number;
+  required_free_bytes: number;
+  components: SetupComponent[];
+  ready: boolean;
+}
+
+export interface SetupJob {
+  id: string;
+  state: SetupComponentState;
+  progress: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  component?: string | null;
+  error?: string | null;
+}
+
 export interface AssetUploadResponse {
   path: string;
   width: number;

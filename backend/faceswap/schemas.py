@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from .swap_backends import backend_catalog, get_backend
+from . import __version__
 
 
 EffectMode = Literal["passthrough", "cartoon", "privacy_blur", "target_head", "onnx_faceswap"]
@@ -24,19 +25,19 @@ class EffectConfig(BaseModel):
 
     mode: EffectMode = "onnx_faceswap"
     strength: float = Field(default=0.82, ge=0.0, le=1.0)
-    smoothing: float = Field(default=0.72, ge=0.0, le=0.98)
+    smoothing: float = Field(default=0.5, ge=0.0, le=0.98)
     scale: float = Field(default=1.22, ge=0.6, le=2.0)
-    y_offset: float = Field(default=-0.04, ge=-0.5, le=0.5)
+    y_offset: float = Field(default=0.5, ge=-0.5, le=0.5)
     mirror: bool = True
     debug: bool = False
-    target_image_path: str | None = None
+    target_image_path: str | None = "assets/aging-cyber-monk-target.png"
     model_path: str | None = None
     provider: NeuralProvider = "cuda"
     precision: Literal["fp32", "fp16"] = "fp32"
     edge_feather: float = Field(default=0.35, ge=0.0, le=1.0)
     color_match: float = Field(default=0.25, ge=0.0, le=1.0)
     sharpen: float = Field(default=0.2, ge=0.0, le=1.0)
-    temporal_smoothing: float = Field(default=0.0, ge=0.0, le=0.95)
+    temporal_smoothing: float = Field(default=0.4, ge=0.0, le=0.95)
     background_enabled: bool = False
     background_path: str | None = None
     background_strength: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -57,6 +58,11 @@ class SessionStartRequest(BaseModel):
 class SessionEffectUpdateRequest(BaseModel):
     expected_revision: int | None = None
     effect: EffectConfig = Field(default_factory=EffectConfig)
+
+
+class SetupInstallRequest(BaseModel):
+    accept_terms: bool = False
+    components: list[Literal["inswapper", "buffalo_l", "background"]] | None = None
 
 
 class VoiceConfig(BaseModel):
@@ -281,7 +287,7 @@ class CapabilityStatus(BaseModel):
     virtual_camera_backend: str = "v4l2loopback"
     voice_modes: list[str] = ["dsp", "speech_to_speech"]
     application: str = "mashr-faceswap"
-    version: str = "0.2.0-alpha.1"
+    version: str = __version__
     opencv: str
     cuda_devices: int
     pyvirtualcam: bool

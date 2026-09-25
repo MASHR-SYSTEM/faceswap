@@ -1,0 +1,47 @@
+name: Publish signed Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: SignPath-completed workflow run containing signed artifacts
+        required: true
+      tag:
+        description: Existing release tag (for example v0.2.0-alpha.1)
+        required: true
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: windows-2022
+    environment: signed-production-release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: signed
+      - name: Require valid Authenticode on every executable
+        shell: pwsh
+        run: |
+          $executables = Get-ChildItem signed -Recurse -Filter *.exe
+          if ($executables.Count -lt 2) { throw "Both the signed app and signed installer are required" }
+          foreach ($file in $executables) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne "Valid") { throw "$($file.Name) is not validly signed: $($signature.Status)" }
+          }
+      - name: Write checksums for signed release bytes
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem signed -Recurse -Filter *-setup.exe
+          if ($installer.Count -ne 1) { throw "Expected exactly one signed installer" }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($installer.Name)" | Set-Content (Join-Path $installer.DirectoryName "SHA256SUMS.txt")
+      - name: Publish durable GitHub release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t files < <(find signed -type f \( -name '*.exe' -o -name 'SHA256SUMS.txt' \))
+          test ${#files[@]} -gt 1
+          gh release upload "${{ inputs.tag }}" "${files[@]}" --clobber

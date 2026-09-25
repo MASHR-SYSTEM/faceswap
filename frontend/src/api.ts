@@ -18,6 +18,8 @@ import type {
   VoiceRouteStatus,
   VoiceStartRequest,
   VoiceStatus
+  , SetupStatus
+  , SetupJob
 } from "./types";
 
 async function jsonRequest<T>(url: string, options?: RequestInit): Promise<T> {
@@ -29,7 +31,7 @@ async function jsonRequest<T>(url: string, options?: RequestInit): Promise<T> {
     let detail = `${response.status} ${response.statusText}`;
     try {
       const payload = await response.json();
-      detail = payload.detail ?? detail;
+      detail = payload.message ?? (typeof payload.detail === "string" ? payload.detail : payload.detail?.message) ?? detail;
     } catch {
       // Keep HTTP status detail.
     }
@@ -39,6 +41,14 @@ async function jsonRequest<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  setup: () => jsonRequest<SetupStatus>("/api/setup"),
+  installSetup: (acceptTerms: boolean) => jsonRequest<SetupJob>("/api/setup/install", {
+    method: "POST", body: JSON.stringify({ accept_terms: acceptTerms })
+  }),
+  setupJob: (id: string) => jsonRequest<SetupJob>(`/api/setup/jobs/${id}`),
+  cancelSetup: (id: string) => jsonRequest<SetupJob>(`/api/setup/jobs/${id}`, { method: "DELETE" }),
+  verifySetup: () => jsonRequest<SetupStatus>("/api/setup/verify", { method: "POST" }),
+  completeSetup: () => jsonRequest<SetupStatus>("/api/setup/complete", { method: "POST" }),
   effect: () => jsonRequest<{ effect: EffectConfig; revision: number }>("/api/session/config"),
   cancelAvatar: (id: string) => jsonRequest<AvatarRenderJob>(`/api/avatar/jobs/${id}/cancel`, { method: "POST" }),
   status: () => jsonRequest<SessionStatus>("/api/status"),
