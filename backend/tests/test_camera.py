@@ -98,16 +98,14 @@ def test_scanline_corruption_is_rejected_but_black_privacy_frame_is_valid():
 
 
 def test_windows_capture_falls_back_after_corrupt_stream(monkeypatch):
-    corrupt = np.zeros((480, 640, 3), np.uint8)
-    corrupt[0, :, 1] = 255
     good = np.full((480, 640, 3), 80, np.uint8)
     class Capture:
-        def __init__(self, frame): self.frame, self.released = frame, False
+        def __init__(self, frame, opened=True): self.frame, self.opened, self.released = frame, opened, False
         def set(self, *_): return True
-        def isOpened(self): return True
+        def isOpened(self): return self.opened
         def read(self): return True, self.frame
         def release(self): self.released = True
-    first, second = Capture(corrupt), Capture(good)
+    first, second = Capture(good, opened=False), Capture(good)
     captures = iter((first, second))
     monkeypatch.setattr('faceswap.session.capture_backends', lambda: [(1, 'Media Foundation'), (2, 'DirectShow')])
     monkeypatch.setattr('faceswap.session.cv2.VideoCapture', lambda *_: next(captures))

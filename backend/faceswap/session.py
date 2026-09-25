@@ -11,6 +11,9 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+# OpenCV's Media Foundation hardware transforms can expose malformed or
+# unreadable frames on some Intel/Dell integrated-camera stacks.
+os.environ.setdefault("OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS", "0")
 import cv2
 import numpy as np
 
@@ -83,6 +86,8 @@ class VideoSession(WorkerLifecycle):
     @serialized
     def start(self, request: SessionStartRequest) -> SessionStatus:
         source_index = _resolve_source_index(request.source_index, request.source_id)
+        selected = next((item for item in list_camera_devices() if item.index == source_index), None)
+        record(f"Selected camera: {selected.label if selected else f'index {source_index}'}")
         active_capture = request.model_dump(exclude={"effect"})
         self.stop()
         request = request.model_copy(update={"source_index": source_index})
@@ -302,39 +307,54 @@ def _resolve_source_index(requested_index: int | None, source_id: str | None = N
 def _open_capture(request: SessionStartRequest):
     failures: list[str] = []
     for backend, backend_name in capture_backends():
-        capture = cv2.VideoCapture(request.source_index, backend)
-        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        capture.set(cv2.CAP_PROP_FRAME_WIDTH, request.width)
-        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, request.height)
-        if request.fps is not None:
-            capture.set(cv2.CAP_PROP_FPS, request.fps)
-        if not capture.isOpened():
-            failures.append(f"{backend_name}: could not open")
-            record(f"{backend_name} could not open camera {request.source_index}")
-            capture.release()
-            continue
+        profiles = [
+            ("camera default", None),
+            (f"{request.width}x{request.height} MJPG", "MJPG"),
+            (f"{request.width}x{request.height} default format", ""),
+        ]
+        for profile_name, fourcc in profiles:
+            record(f"Trying {backend_name}, profile={profile_name}")
+            capture = cv2.VideoCapture(request.source_index, backend)
+            if not capture.isOpened():
+                failures.append(f"{backend_name}/{profile_name}: could not open")
+                capture.release()
+                break
+            capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            if fourcc is not None:
+                capture.set(cv2.CAP_PROP_FRAME_WIDTH, request.width)
+                capture.set(cv2.CAP_PROP_FRAME_HEIGHT, request.height)
+                if fourcc:
+                    capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+            if request.fps is not None:
+                capture.set(cv2.CAP_PROP_FPS, request.fps)
 
-        first_frame = None
-        reason = "no readable frame"
-        for _ in range(12):
-            ok, candidate = capture.read()
-            if not ok or candidate is None:
-                continue
-            try:
-                candidate = _normalise_frame(candidate)
-            except ValueError as exc:
-                reason = str(exc)
-                continue
-            if _looks_like_scanline_corruption(candidate):
-                reason = "black frame with pixels concentrated in a scanline"
-                continue
-            first_frame = candidate.copy(order='C')
-            break
-        if first_frame is not None:
-            return capture, backend_name, first_frame
-        failures.append(f"{backend_name}: {reason}")
-        record(f"Rejected {backend_name} camera stream: {reason}; trying fallback")
-        capture.release()
+            first_frame = None
+            reason = "no readable frame during 4 second warm-up"
+            deadline = time.monotonic() + 4.0
+            reads = 0
+            while time.monotonic() < deadline:
+                ok, candidate = capture.read()
+                reads += 1
+                if not ok or candidate is None:
+                    time.sleep(0.05)
+                    continue
+                try:
+                    candidate = _normalise_frame(candidate)
+                except ValueError as exc:
+                    reason = str(exc)
+                    continue
+                if _looks_like_scanline_corruption(candidate):
+                    reason = "black frame with pixels concentrated in a scanline"
+                    time.sleep(0.03)
+                    continue
+                first_frame = candidate.copy(order='C')
+                break
+            if first_frame is not None:
+                record(f"Valid frame from {backend_name}/{profile_name} after {reads} read attempts; shape={first_frame.shape}")
+                return capture, backend_name, first_frame
+            failures.append(f"{backend_name}/{profile_name}: {reason}")
+            record(f"Rejected {backend_name}/{profile_name} after {reads} reads: {reason}")
+            capture.release()
 
     detail = "; ".join(failures)
     raise RuntimeError(f"Camera opened but did not provide a valid image ({detail}). Close other camera apps and try again.")
