@@ -27,6 +27,9 @@ def test_provider_specs_cuda_skips_tensorrt(tmp_path):
 
     names = [provider[0] if isinstance(provider, tuple) else provider for provider in specs]
     assert names == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    cuda_options = specs[0][1]
+    assert cuda_options["cudnn_conv_algo_search"] == "EXHAUSTIVE"
+    assert cuda_options["cudnn_conv_use_max_workspace"] == "1"
 
 
 def test_neural_configure_reuses_loaded_runtime(tmp_path, monkeypatch):

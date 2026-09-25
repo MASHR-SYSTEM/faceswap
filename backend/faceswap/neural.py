@@ -353,7 +353,12 @@ def build_provider_specs(
                 {
                     "device_id": "0",
                     "arena_extend_strategy": "kNextPowerOfTwo",
-                    "cudnn_conv_algo_search": "HEURISTIC",
+                    # InSwapper is convolution-heavy.  HEURISTIC starts faster but can
+                    # select dramatically slower kernels on laptop GPUs.  Pay the
+                    # one-off startup tuning cost so every camera frame is faster.
+                    "cudnn_conv_algo_search": "EXHAUSTIVE",
+                    "cudnn_conv_use_max_workspace": "1",
+                    "do_copy_in_default_stream": "1",
                     "gpu_mem_limit": str(6 * 1024 * 1024 * 1024),
                 },
             )

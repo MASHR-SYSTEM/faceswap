@@ -4,14 +4,57 @@ import cv2
 import numpy as np
 
 
+class _CudaIoRunner:
+    """Keep fixed-shape swap tensors on CUDA between camera frames."""
+
+    def __init__(self, model, blob, latent):
+        import onnxruntime as ort
+
+        self.session = model.session
+        self.image = ort.OrtValue.ortvalue_from_numpy(blob, "cuda", 0)
+        self.latent = ort.OrtValue.ortvalue_from_numpy(latent, "cuda", 0)
+        self.binding = self.session.io_binding()
+        self.binding.bind_ortvalue_input(model.input_names[0], self.image)
+        self.binding.bind_ortvalue_input(model.input_names[1], self.latent)
+        # Let ORT allocate the output on CUDA.  Only the small final 128x128
+        # result crosses back to the CPU for paste-back.
+        self.binding.bind_output(model.output_names[0], "cuda", 0)
+
+    def run(self, blob):
+        self.image.update_inplace(blob)
+        self.session.run_with_iobinding(self.binding)
+        return self.binding.copy_outputs_to_cpu()[0]
+
+
+def _run_swap_model(model, blob, latent):
+    providers = model.session.get_providers()
+    if providers and providers[0] == "CUDAExecutionProvider":
+        runner = getattr(model, "_mashr_cuda_io_runner", None)
+        if runner is None:
+            try:
+                runner = _CudaIoRunner(model, blob, latent)
+            except Exception:
+                # Older ORT/CUDA combinations may not expose device OrtValues.
+                # Remember the failure and retain the compatible run path.
+                runner = False
+            model._mashr_cuda_io_runner = runner
+        if runner:
+            try:
+                return runner.run(blob)
+            except Exception:
+                # I/O binding is an optimization, never a reason to lose video.
+                model._mashr_cuda_io_runner = False
+    return model.session.run(model.output_names,
+        {model.input_names[0]: blob, model.input_names[1]: latent})[0]
+
+
 def swap_frame(model, frame, face, latent, timings=None):
     from insightface.utils.face_align import norm_crop2
     crop, transform = norm_crop2(frame, face.kps, model.input_size[0])
     blob = cv2.dnn.blobFromImage(crop, 1.0 / model.input_std, model.input_size,
                                (model.input_mean,) * 3, swapRB=True)
     started = time.perf_counter()
-    prediction = model.session.run(model.output_names,
-        {model.input_names[0]: blob, model.input_names[1]: latent})[0]
+    prediction = _run_swap_model(model, blob, latent)
     if timings is not None:
         timings.inference_ms = (time.perf_counter() - started) * 1000
     if not np.isfinite(prediction).all():
