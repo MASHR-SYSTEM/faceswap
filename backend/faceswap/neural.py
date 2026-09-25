@@ -226,9 +226,14 @@ class NeuralFaceSwapEffect:
             self._load_with_providers(insightface, config, fallback_specs)
             provider_specs = fallback_specs
 
+        self._info.active_provider = _active_provider_from_model(self._swapper) or _first_provider_name(provider_specs)
+        if config.provider == "cuda" and self._info.active_provider != "CUDAExecutionProvider":
+            raise RuntimeError(
+                "CUDA was selected but ONNX Runtime fell back to CPU. "
+                "The NVIDIA runtime libraries could not be loaded; reinstall the current MASHr build."
+            )
         self._info.ready = True
         self._info.last_error = None
-        self._info.active_provider = _active_provider_from_model(self._swapper) or _first_provider_name(provider_specs)
 
     def _load_with_providers(self, insightface: Any, config: NeuralRuntimeConfig, provider_specs: list[Any]) -> None:
         insightface_root = config.models_dir / "insightface"

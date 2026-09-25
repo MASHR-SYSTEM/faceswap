@@ -45,6 +45,12 @@ def main():
     for module in ('onnxruntime', 'insightface', 'mediapipe', 'onnx', 'onnxconverter_common'):
         if importlib.util.find_spec(module):
             command.extend(['--collect-all', module])
+    # ONNX Runtime preload_dlls(directory="") discovers these redistributable
+    # packages at runtime. PyInstaller must preserve their DLL directories.
+    for module in ('nvidia.cuda_nvrtc', 'nvidia.cuda_runtime', 'nvidia.cublas',
+                   'nvidia.cufft', 'nvidia.curand', 'nvidia.cudnn', 'nvidia.nvjitlink'):
+        if importlib.util.find_spec(module):
+            command.extend(['--collect-all', module])
     # Assets are chosen explicitly by the public export; never collect user files.
     for path in sorted((ROOT / 'assets').glob('*.png')):
         if path.name in {'aging-cyber-monk-target.png', 'default-target.png',
