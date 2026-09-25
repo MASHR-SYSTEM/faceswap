@@ -23,6 +23,8 @@ class LatestCapture:
             while not self.stop_event.is_set():
                 ok, frame = self.capture.read()
                 if not ok or frame is None:
+                    if self.stop_event.is_set():
+                        break
                     raise RuntimeError('Camera frame read failed')
                 # Some Windows camera drivers recycle the memory behind the
                 # ndarray returned by VideoCapture.read().  The processing
@@ -36,7 +38,8 @@ class LatestCapture:
                     self.condition.notify_all()
         except Exception as exc:
             with self.condition:
-                self.error = str(exc)
+                if not self.stop_event.is_set():
+                    self.error = str(exc)
                 self.condition.notify_all()
         finally:
             self.capture.release()
@@ -44,6 +47,8 @@ class LatestCapture:
     def next(self, after, timeout=.1):
         with self.condition:
             self.condition.wait_for(lambda: self.sequence > after or self.error or self.stop_event.is_set(), timeout)
+            if self.stop_event.is_set():
+                return None
             if self.error:
                 raise RuntimeError(self.error)
             if self.sequence <= after:
@@ -53,11 +58,17 @@ class LatestCapture:
             return self.sequence, self.timestamp, self.frame.copy(order='C')
 
     def close(self):
+        self.request_stop()
+        self.thread.join()
+
+    def request_stop(self):
+        """Release native capture immediately so a blocked read can unwind."""
         self.stop_event.set()
         with self.condition:
             self.condition.notify_all()
-        # A stuck camera retains the parent session's ownership via its join guard.
-        self.thread.join()
+        # Windows camera backends may wait indefinitely in read(). VideoCapture
+        # release is idempotent and is the backend-supported cancellation path.
+        self.capture.release()
 
 
 class LatestOutput:

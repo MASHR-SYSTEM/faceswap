@@ -51,11 +51,30 @@ def test_capture_owns_frames_returned_to_processing_thread():
     deadline = time.monotonic() + 1
     while reader.sequence == 0 and time.monotonic() < deadline:
         time.sleep(.001)
-    reader.stop_event.set()
     _, _, frame = reader.next(0)
+    reader.stop_event.set()
     shared.fill(99)
     assert np.all(frame == 7)
     reader.close()
+
+
+def test_capture_stop_releases_driver_before_waiting_for_reader():
+    entered = threading.Event()
+    released = threading.Event()
+    class BlockingCapture:
+        def read(self):
+            entered.set()
+            released.wait(1)
+            return False, None
+        def release(self):
+            released.set()
+    reader = LatestCapture(BlockingCapture()).start()
+    assert entered.wait(1)
+    started = time.monotonic()
+    reader.close()
+    assert released.is_set()
+    assert time.monotonic() - started < .5
+    assert not reader.thread.is_alive()
 
 
 def test_gpu_admission_excludes_offline_and_live():

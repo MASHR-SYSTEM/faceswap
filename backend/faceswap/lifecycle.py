@@ -61,6 +61,8 @@ class WorkerLifecycle:
             gpu_coordinator.leave_live(self)
             with self._lock:
                 if generation == self._generation:
+                    if self._state.last_error == 'Shutdown is still pending; restart is blocked until the worker exits':
+                        self._state.last_error = None
                     self._state.running = False
                     self._state.phase = 'error' if self._state.last_error else 'idle'
 

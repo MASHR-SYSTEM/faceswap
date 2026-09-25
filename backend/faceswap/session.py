@@ -69,6 +69,7 @@ class VideoSession(WorkerLifecycle):
         self._preview_condition = threading.Condition(self._lock)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._reader: LatestCapture | None = None
         self._latest_jpeg: bytes | None = None
         self._state = _RuntimeState()
         self._config_path = config_path
@@ -131,6 +132,11 @@ class VideoSession(WorkerLifecycle):
 
     @serialized
     def stop(self) -> SessionStatus:
+        with self._lock:
+            reader = self._reader
+        if reader is not None:
+            record("Camera stop requested; releasing capture to cancel pending read")
+            reader.request_stop()
         if self._stop_worker():
             with self._preview_condition:
                 self._latest_jpeg = None
@@ -202,6 +208,8 @@ class VideoSession(WorkerLifecycle):
 
                 output_worker = LatestOutput(virtual_camera)
             reader = LatestCapture(capture, first_frame=first_frame).start()
+            with self._lock:
+                self._reader = reader
             last_sequence = 0
             self._mark_ready()
             tick_start = time.monotonic()
@@ -277,6 +285,8 @@ class VideoSession(WorkerLifecycle):
                 virtual_camera.close()
             self._processor.close()
             with self._lock:
+                if self._reader is reader:
+                    self._reader = None
                 self._state.running = False
                 self._state.virtual_camera_ready = False
                 self._state.virtual_camera_state = "disabled"

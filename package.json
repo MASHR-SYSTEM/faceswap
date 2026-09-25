@@ -1,7 +1,7 @@
 {
   "name": "faceswap-local",
   "private": true,
-  "version": "0.2.0-alpha.5",
+  "version": "0.2.0-alpha.6",
   "scripts": {
     "dev:api": "scripts/run_backend.sh",
     "dev:ui": "npm --prefix frontend run dev",
