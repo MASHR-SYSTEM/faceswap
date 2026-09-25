@@ -7,7 +7,7 @@ import numpy as np
 from faceswap import camera
 from faceswap.schemas import DeviceInfo, SessionStartRequest
 from faceswap.session import _resolve_source_index
-from faceswap.session import _looks_like_scanline_corruption, _open_capture
+from faceswap.session import _looks_like_scanline_corruption, _open_capture, _resize_letterbox
 
 
 def device_tree(tmp_path, monkeypatch, nodes):
@@ -114,3 +114,11 @@ def test_windows_capture_falls_back_after_corrupt_stream(monkeypatch):
     assert first.released
     assert capture is second and name == 'DirectShow'
     assert np.array_equal(frame, good)
+
+
+def test_processing_resize_preserves_aspect_ratio_and_bounds_work():
+    source = np.full((1080, 1920, 3), 100, np.uint8)
+    output = _resize_letterbox(source, 640, 480)
+    assert output.shape == (480, 640, 3)
+    assert np.all(output[60:420] == 100)
+    assert np.all(output[:60] == 0) and np.all(output[420:] == 0)

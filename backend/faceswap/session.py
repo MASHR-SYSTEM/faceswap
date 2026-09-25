@@ -198,13 +198,16 @@ class VideoSession(WorkerLifecycle):
             detected_fps = capture.get(cv2.CAP_PROP_FPS)
             capture_format = _capture_format(capture)
             record(f"Camera opened with {backend_name}: {actual_width}x{actual_height}, fps={detected_fps:.2f}, format={capture_format}")
+            first_frame = _resize_letterbox(first_frame, request.width, request.height)
+            if (actual_width, actual_height) != (request.width, request.height):
+                record(f"Processing frames at {request.width}x{request.height} to limit latency")
             with self._lock:
                 self._state.capture_backend = backend_name
                 self._state.capture_format = capture_format
             virtual_fps = request.fps or (int(round(detected_fps)) if detected_fps and detected_fps > 0 else 30)
 
             if request.virtual_camera:
-                virtual_camera = self._open_virtual_camera(actual_width, actual_height, virtual_fps)
+                virtual_camera = self._open_virtual_camera(request.width, request.height, virtual_fps)
 
                 output_worker = LatestOutput(virtual_camera)
             reader = LatestCapture(capture, first_frame=first_frame).start()
@@ -226,7 +229,7 @@ class VideoSession(WorkerLifecycle):
                     self._state.capture_sequence = sequence
                 last_sequence = sequence
 
-                frame = _normalise_frame(frame)
+                frame = _resize_letterbox(_normalise_frame(frame), request.width, request.height)
                 effect = self._current_effect()
                 processed = self._processor.process(frame, effect)
                 fps_window_frames += 1
@@ -394,3 +397,19 @@ def _capture_format(capture) -> str:
     value = int(capture.get(cv2.CAP_PROP_FOURCC))
     fourcc = ''.join(chr((value >> (8 * index)) & 0xff) for index in range(4)).strip('\x00 ') or 'unknown'
     return fourcc
+
+
+def _resize_letterbox(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    source_height, source_width = frame.shape[:2]
+    if (source_width, source_height) == (width, height):
+        return frame
+    scale = min(width / source_width, height / source_height)
+    resized_width = max(1, int(round(source_width * scale)))
+    resized_height = max(1, int(round(source_height * scale)))
+    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+    resized = cv2.resize(frame, (resized_width, resized_height), interpolation=interpolation)
+    output = np.zeros((height, width, 3), dtype=np.uint8)
+    x = (width - resized_width) // 2
+    y = (height - resized_height) // 2
+    output[y:y + resized_height, x:x + resized_width] = resized
+    return output
