@@ -45,4 +45,8 @@ jobs:
           sha256sum --check SHA256SUMS.txt
           installer=$(find . -maxdepth 1 -name '*-setup.exe' -print -quit)
           test -n "$installer"
-          gh release create "$TAG" "$installer" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$TARGET" --prerelease --title "MASHr FaceSwap $TAG" --notes "Unsigned Windows alpha with improved integrated-camera negotiation and expanded on-screen diagnostics. Windows SmartScreen may show an Unknown publisher warning."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$installer" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "$installer" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$TARGET" --prerelease --title "MASHr FaceSwap $TAG" --notes "Unsigned Windows alpha with improved integrated-camera negotiation and expanded on-screen diagnostics. Windows SmartScreen may show an Unknown publisher warning."
+          fi
