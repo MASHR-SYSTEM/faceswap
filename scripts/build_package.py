@@ -15,6 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
 
 
+def module_exists(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
 def windows_version_file() -> Path:
     numeric = [int(part) for part in VERSION.split('-', 1)[0].split('.')]
     numeric = (numeric + [0, 0, 0, 0])[:4]
@@ -43,13 +50,13 @@ def main():
     if platform.system() == 'Windows':
         command.extend(['--windowed', '--version-file', str(windows_version_file())])
     for module in ('onnxruntime', 'insightface', 'mediapipe', 'onnx', 'onnxconverter_common'):
-        if importlib.util.find_spec(module):
+        if module_exists(module):
             command.extend(['--collect-all', module])
     # ONNX Runtime preload_dlls(directory="") discovers these redistributable
     # packages at runtime. PyInstaller must preserve their DLL directories.
     for module in ('nvidia.cuda_nvrtc', 'nvidia.cuda_runtime', 'nvidia.cublas',
                    'nvidia.cufft', 'nvidia.curand', 'nvidia.cudnn', 'nvidia.nvjitlink'):
-        if importlib.util.find_spec(module):
+        if module_exists(module):
             command.extend(['--collect-all', module])
     # Assets are chosen explicitly by the public export; never collect user files.
     for path in sorted((ROOT / 'assets').glob('*.png')):
@@ -101,7 +108,7 @@ def main():
     for name in ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'):
         shutil.copy2(ROOT / name, bundle / name)
     (bundle / 'dependency-inventory.json').write_text(json.dumps(inventory, indent=2))
-    profile = 'cuda' if importlib.util.find_spec('onnxruntime') and any(d['name'] == 'onnxruntime-gpu' for d in inventory) else 'cpu'
+    profile = 'cuda' if module_exists('onnxruntime') and any(d['name'] == 'onnxruntime-gpu' for d in inventory) else 'cpu'
     stem = f'FaceSwap-{VERSION}-{platform.system().lower()}-x64-{profile}'
     archive = shutil.make_archive(str(ROOT / 'dist' / stem), 'zip' if platform.system() == 'Windows' else 'gztar',
                                   root_dir=bundle.parent, base_dir=bundle.name)
