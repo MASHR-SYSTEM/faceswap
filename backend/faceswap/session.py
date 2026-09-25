@@ -52,6 +52,8 @@ class _RuntimeState:
     model_latency_ms: float = 0.0
     model_detect_ms: float = 0.0
     model_swap_ms: float = 0.0
+    model_inference_ms: float = 0.0
+    model_controls_ms: float = 0.0
     target_ready: bool = False
     face_locked: bool = False
     background_ready: bool = False
@@ -253,6 +255,8 @@ class VideoSession(WorkerLifecycle):
                         self._state.model_latency_ms = self._processor.model_latency_ms
                         self._state.model_detect_ms = self._processor.model_detect_ms
                         self._state.model_swap_ms = self._processor.model_swap_ms
+                        self._state.model_inference_ms = self._processor.model_inference_ms
+                        self._state.model_controls_ms = self._processor.model_controls_ms
                         self._state.target_ready = self._processor.target_ready
                         self._state.face_locked = self._processor.face_locked
                         self._state.background_ready = self._processor.background_ready

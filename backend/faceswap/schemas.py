@@ -255,6 +255,8 @@ class SessionStatus(BaseModel):
     model_latency_ms: float = 0.0
     model_detect_ms: float = 0.0
     model_swap_ms: float = 0.0
+    model_inference_ms: float = 0.0
+    model_controls_ms: float = 0.0
     target_ready: bool = False
     face_locked: bool = False
     background_ready: bool = False

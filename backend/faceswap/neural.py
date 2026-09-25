@@ -74,6 +74,8 @@ class NeuralFaceSwapEffect:
         self._previous_face_box: FaceBox | None = None
         self._previous_mouth_anchor: MouthAnchor | None = None
         self._previous_candidate: np.ndarray | None = None
+        self._previous_target_face: Any | None = None
+        self._frame_index = 0
         self._info = NeuralRuntimeInfo()
 
     @property
@@ -159,20 +161,23 @@ class NeuralFaceSwapEffect:
         self._info.timings = NeuralTimings()
         total_start = time.perf_counter()
         try:
-            detect_start = time.perf_counter()
-            bboxes, keypoints = self._face_app.det_model.detect(frame_bgr, max_num=0)
-            faces = [SimpleNamespace(bbox=box[:4], kps=keypoints[index], det_score=box[4])
-                     for index, box in enumerate(bboxes)]
-            self._info.timings.detect_ms = _elapsed_ms(detect_start)
-            if not faces:
-                self._info.last_face = None
-                self._info.last_mouth_anchor = None
-                self._reset_live_state()
-                self._info.timings.swap_ms = 0.0
-                self._info.timings.frame_ms = _elapsed_ms(total_start)
-                return frame_bgr
-
-            target_face = _select_live_face(faces, self._info.last_face)
+            self._frame_index += 1
+            target_face = self._previous_target_face
+            if target_face is None or self._frame_index % 2:
+                detect_start = time.perf_counter()
+                bboxes, keypoints = self._face_app.det_model.detect(frame_bgr, max_num=0)
+                faces = [SimpleNamespace(bbox=box[:4], kps=keypoints[index], det_score=box[4])
+                         for index, box in enumerate(bboxes)]
+                self._info.timings.detect_ms = _elapsed_ms(detect_start)
+                if not faces:
+                    self._info.last_face = None
+                    self._info.last_mouth_anchor = None
+                    self._reset_live_state()
+                    self._info.timings.swap_ms = 0.0
+                    self._info.timings.frame_ms = _elapsed_ms(total_start)
+                    return frame_bgr
+                target_face = _select_live_face(faces, self._info.last_face)
+                self._previous_target_face = target_face
             current_face_box = _face_box_from_insightface(target_face)
             face_box = _smooth_face_box(current_face_box, self._previous_face_box, config.smoothing)
             self._previous_face_box = face_box
@@ -312,6 +317,8 @@ class NeuralFaceSwapEffect:
         self._previous_face_box = None
         self._previous_mouth_anchor = None
         self._previous_candidate = None
+        self._previous_target_face = None
+        self._frame_index = 0
 
 
 def build_provider_specs(

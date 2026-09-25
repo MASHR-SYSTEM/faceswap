@@ -63,6 +63,14 @@ class FrameProcessor:
         return self._neural_faceswap.timings.swap_ms if self._neural_active else 0.0
 
     @property
+    def model_inference_ms(self) -> float:
+        return self._neural_faceswap.timings.inference_ms if self._neural_active else 0.0
+
+    @property
+    def model_controls_ms(self) -> float:
+        return self._neural_faceswap.timings.controls_ms if self._neural_active else 0.0
+
+    @property
     def model_error(self) -> str | None:
         return self._neural_faceswap.last_error if self._neural_active else None
 

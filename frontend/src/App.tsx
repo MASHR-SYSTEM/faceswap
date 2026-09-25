@@ -1384,6 +1384,8 @@ export function App() {
                   <Metric label="Neural ms" value={(status?.model_latency_ms ?? 0).toFixed(1)} />
                   <Metric label="Detect ms" value={(status?.model_detect_ms ?? 0).toFixed(1)} />
                   <Metric label="Swap ms" value={(status?.model_swap_ms ?? 0).toFixed(1)} />
+                  <Metric label="Inference ms" value={(status?.model_inference_ms ?? 0).toFixed(1)} />
+                  <Metric label="Controls ms" value={(status?.model_controls_ms ?? 0).toFixed(1)} />
                   <Metric label="Bg ms" value={(status?.background_latency_ms ?? 0).toFixed(1)} />
                   <Metric label="Mask ms" value={(status?.background_segment_ms ?? 0).toFixed(1)} />
                 </div>

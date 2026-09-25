@@ -242,6 +242,8 @@ export interface SessionStatus {
   model_latency_ms: number;
   model_detect_ms: number;
   model_swap_ms: number;
+  model_inference_ms: number;
+  model_controls_ms: number;
   target_ready: boolean;
   face_locked: boolean;
   background_ready: boolean;
