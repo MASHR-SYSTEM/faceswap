@@ -73,6 +73,17 @@ def test_mjpeg_ends_on_stopped_session_even_with_cached_frame():
     assert list(session.mjpeg_stream()) == []
 
 
+def test_mjpeg_frame_has_length_for_reliable_browser_parsing():
+    session = VideoSession()
+    session._state.running = True
+    session._latest_jpeg = b'jpeg-data'
+    stream = session.mjpeg_stream()
+    part = next(stream)
+    session._stop_event.set()
+    assert b'Content-Length: 9\r\n\r\n' in part
+    assert part.endswith(b'jpeg-data\r\n')
+
+
 def test_effect_persistence_and_revision_prevent_stale_edits(tmp_path):
     from faceswap.schemas import EffectConfig
     path = tmp_path/'effect.json'

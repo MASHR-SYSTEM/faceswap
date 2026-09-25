@@ -36,6 +36,28 @@ def test_capture_keeps_only_latest_frame_and_releases():
     assert capture.released and not reader.thread.is_alive()
 
 
+def test_capture_owns_frames_returned_to_processing_thread():
+    release = threading.Event()
+    shared = np.zeros((2, 2, 3), np.uint8)
+    class ReusingCapture:
+        def read(self):
+            shared.fill(7)
+            release.wait(1)
+            return True, shared
+        def release(self):
+            pass
+    reader = LatestCapture(ReusingCapture()).start()
+    release.set()
+    deadline = time.monotonic() + 1
+    while reader.sequence == 0 and time.monotonic() < deadline:
+        time.sleep(.001)
+    reader.stop_event.set()
+    _, _, frame = reader.next(0)
+    shared.fill(99)
+    assert np.all(frame == 7)
+    reader.close()
+
+
 def test_gpu_admission_excludes_offline_and_live():
     gate = GpuCoordinator()
     owner = object()

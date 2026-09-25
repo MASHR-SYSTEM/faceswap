@@ -478,7 +478,11 @@ def latest_preview() -> Response:
 
 @app.get("/preview.mjpeg")
 def preview_mjpeg() -> StreamingResponse:
-    return StreamingResponse(session.mjpeg_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(
+        session.mjpeg_stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
 
 
 def _can_import(module: str) -> bool:

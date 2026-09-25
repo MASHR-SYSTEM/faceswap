@@ -147,16 +147,28 @@ class VideoSession(WorkerLifecycle):
             return self._effect.copy(deep=True)
 
     def mjpeg_stream(self):
-        boundary = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+        last_frame = None
         while True:
             with self._preview_condition:
-                self._preview_condition.wait(timeout=1.0)
+                self._preview_condition.wait_for(
+                    lambda: self._latest_jpeg is not last_frame
+                    or not self._state.running
+                    or self._stop_event.is_set(),
+                    timeout=1.0,
+                )
                 if not self._state.running or self._stop_event.is_set():
                     break
                 frame = self._latest_jpeg
-            if frame is None:
+            if frame is None or frame is last_frame:
                 continue
-            yield boundary + frame + b"\r\n"
+            last_frame = frame
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n"
+                + f"Content-Length: {len(frame)}\r\n\r\n".encode("ascii")
+                + frame
+                + b"\r\n"
+            )
 
     def _run(self, request: SessionStartRequest) -> None:
         capture: cv2.VideoCapture | None = None

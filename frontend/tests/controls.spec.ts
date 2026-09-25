@@ -66,6 +66,13 @@ test('camera changes show restart requirement and stop all is explicit', async (
   await expect(page.getByRole('button', { name: 'Start camera', exact: true })).toBeVisible();
 });
 
+test('camera preview disables background replacement', async ({ page }) => {
+  const requests = await app(page);
+  await page.getByLabel('Camera effect').selectOption('passthrough');
+  await expect.poll(() => requests.filter(r => r.path === '/api/session/effect').at(-1)?.body.effect.mode).toBe('passthrough');
+  expect(requests.filter(r => r.path === '/api/session/effect').at(-1)?.body.effect.background_enabled).toBe(false);
+});
+
 test('opening background picker makes no settings request', async ({ page }) => {
   const requests = await app(page);
   await page.locator('summary').filter({ hasText: /^Background$/ }).click();

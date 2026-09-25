@@ -721,7 +721,10 @@ export function App() {
         <ControlGroup title="Setup & help" icon={<CheckCircle2 size={18} />} defaultOpen>
           <p className="section-help">Runs on this computer. Camera and microphone start only when you choose Start.</p>
           <label className="model-path-field"><span>Camera effect</span>
-            <select aria-label="Camera effect" value={effect.mode} onChange={e => patchEffect({mode: e.target.value as EffectConfig['mode']})}>
+            <select aria-label="Camera effect" value={effect.mode} onChange={e => {
+              const mode = e.target.value as EffectConfig['mode'];
+              patchEffect(mode === 'passthrough' ? {mode, background_enabled: false} : {mode});
+            }}>
               <option value="passthrough">Camera preview (no model)</option>
               <option value="cartoon">Cartoon (no model)</option>
               <option value="privacy_blur">Privacy blur (no model)</option>

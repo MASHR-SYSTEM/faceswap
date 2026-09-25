@@ -1,4 +1,4 @@
-"""Latest-only frame handoff; ownership stays with the reader until it exits."""
+"""Latest-only frame handoff with explicit ownership across worker threads."""
 import threading
 import time
 
@@ -24,6 +24,11 @@ class LatestCapture:
                 ok, frame = self.capture.read()
                 if not ok or frame is None:
                     raise RuntimeError('Camera frame read failed')
+                # Some Windows camera drivers recycle the memory behind the
+                # ndarray returned by VideoCapture.read().  The processing
+                # thread must never observe that buffer while the driver is
+                # writing the next frame into it.
+                frame = frame.copy(order='C')
                 with self.condition:
                     self.frame = frame
                     self.sequence += 1
@@ -43,7 +48,9 @@ class LatestCapture:
                 raise RuntimeError(self.error)
             if self.sequence <= after:
                 return None
-            return self.sequence, self.timestamp, self.frame
+            # Keep ownership unambiguous even for capture implementations that
+            # return a view backed by driver-managed memory.
+            return self.sequence, self.timestamp, self.frame.copy(order='C')
 
     def close(self):
         self.stop_event.set()
