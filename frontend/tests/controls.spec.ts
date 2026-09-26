@@ -2,7 +2,7 @@ import { test, expect, Page } from '@playwright/test';
 
 async function app(page: Page, modelPath: string | null = null) {
   let effect: any = { mode: 'onnx_faceswap', strength: .82, smoothing: .5, scale: 1.22, y_offset: .5, mirror: true, debug: false,
-    target_image_path: null, model_path: modelPath, provider: 'cpu', precision: 'fp32', edge_feather: .35, color_match: .25,
+    target_image_path: null, model_path: modelPath, provider: 'cpu', precision: 'fp32', edge_feather: .35, color_match: .5,
     sharpen: .2, temporal_smoothing: .4, background_enabled: false, background_path: null, background_strength: 1, background_threshold: 1, background_smoothing: 0 };
   let revision = 1;
   let status: any = { phase: 'idle', generation: 0, running: false, fps_actual: 0, frames_processed: 0, frame_age_ms: 0, dropped_frames: 0, effect_revision: revision };
@@ -21,7 +21,7 @@ async function app(page: Page, modelPath: string | null = null) {
     if (path === '/api/status') result = status;
     if (path === '/api/session/config') result = { effect, revision };
     if (path === '/api/session/effect') { effect = body.effect; revision++; status.effect_revision = revision; result = status; }
-    if (path === '/api/devices') result = [{ index: 0, device_id: 'rgb-id', label: 'Standard webcam', kind: 'standard', is_default: true }, { index: 2, device_id: 'ir-id', label: 'Infrared camera', kind: 'infrared' }];
+    if (path === '/api/devices') result = [{ index: 0, device_id: 'rgb-id', label: 'Standard webcam', kind: 'standard', is_default: true }, { index: 2, device_id: 'ir-id', label: 'Infrared camera', kind: 'infrared' }, { index: 4, device_id: 'obs-id', label: 'Virtual: OBS Virtual Camera', kind: 'virtual' }];
     if (path === '/api/capabilities') result = { platform: 'Linux', onnxruntime: false, insightface: false, default_model_present: false, models_dir: '/user/models', v4l2loopback_devices: [], target_presets: [], voice_modes: ['dsp'], swap_backends: [{ id: 'inswapper', label: 'InSwapper', default_model: 'inswapper_128.onnx' }, { id: 'example', label: 'Example engine', default_model: 'example.onnx' }] };
     if (path === '/api/setup') result = { terms_url: 'https://example.test/terms', terms_accepted: false, completed: true, download_bytes: 843125212, required_free_bytes: 1200000000, components: [], ready: true };
     if (path === '/api/voice/status') result = voice;
@@ -56,7 +56,7 @@ test('camera changes show restart requirement and stop all is explicit', async (
   const requests = await app(page);
   await page.getByRole('button', { name: 'Start camera', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop camera', exact: true })).toBeVisible();
-  await page.getByText('Camera & output', { exact: true }).click();
+  await page.locator('summary').filter({ hasText: /^Camera$/ }).click();
   await page.locator('#camera').selectOption('2');
   await expect(page.getByText('Changes apply on restart', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Apply & restart camera' }).click();
@@ -66,11 +66,28 @@ test('camera changes show restart requirement and stop all is explicit', async (
   await expect(page.getByRole('button', { name: 'Start camera', exact: true })).toBeVisible();
 });
 
-test('camera preview disables background replacement', async ({ page }) => {
+test('removed options use fixed neural defaults', async ({ page }) => {
   const requests = await app(page);
-  await page.getByLabel('Camera effect').selectOption('passthrough');
-  await expect.poll(() => requests.filter(r => r.path === '/api/session/effect').at(-1)?.body.effect.mode).toBe('passthrough');
-  expect(requests.filter(r => r.path === '/api/session/effect').at(-1)?.body.effect.background_enabled).toBe(false);
+  await expect(page.getByText('Setup & help', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Camera effect')).toHaveCount(0);
+  await expect(page.getByLabel('Virtual camera')).toHaveCount(0);
+  await expect(page.getByLabel('Precision')).toHaveCount(0);
+  await expect(page.getByText('Color match', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Start camera', exact: true }).click();
+  const started = requests.filter(r => r.path === '/api/session/start').at(-1)?.body;
+  expect(started.effect.mode).toBe('onnx_faceswap');
+  expect(started.effect.precision).toBe('fp32');
+  expect(started.effect.color_match).toBe(0.5);
+});
+
+test('selecting a virtual camera enables virtual output automatically', async ({ page }) => {
+  const requests = await app(page);
+  await page.locator('summary').filter({ hasText: /^Camera$/ }).click();
+  await page.locator('#camera').selectOption('4');
+  await page.getByRole('button', { name: 'Start camera', exact: true }).click();
+  const started = requests.filter(r => r.path === '/api/session/start').at(-1)?.body;
+  expect(started.source_id).toBe('obs-id');
+  expect(started.virtual_camera).toBe(true);
 });
 
 test('opening background picker makes no settings request', async ({ page }) => {

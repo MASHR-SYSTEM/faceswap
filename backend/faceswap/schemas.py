@@ -35,7 +35,7 @@ class EffectConfig(BaseModel):
     provider: NeuralProvider = "cuda"
     precision: Literal["fp32", "fp16"] = "fp32"
     edge_feather: float = Field(default=0.35, ge=0.0, le=1.0)
-    color_match: float = Field(default=0.25, ge=0.0, le=1.0)
+    color_match: float = Field(default=0.5, ge=0.0, le=1.0)
     sharpen: float = Field(default=0.2, ge=0.0, le=1.0)
     temporal_smoothing: float = Field(default=0.4, ge=0.0, le=0.95)
     background_enabled: bool = False

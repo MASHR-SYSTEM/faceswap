@@ -71,16 +71,6 @@ textarea {
   font-weight: 650;
 }
 
-.top-status {
-  position: absolute;
-  top: 18px;
-  left: 18px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  max-width: calc(100% - 36px);
-}
-
 .status-pill {
   min-height: 32px;
   display: inline-flex;
@@ -148,7 +138,7 @@ textarea {
   --control-font-scale: 2.16;
   font-size: calc(1rem * var(--control-font-scale));
   min-height: 100vh;
-  padding: 18px;
+  padding: 18px 30px 18px 14px;
   border-left: 1px solid rgba(255, 255, 255, 0.11);
   background: #151b1e;
   overflow-y: auto;
@@ -852,7 +842,7 @@ input[type="range"] {
 /* Bounded desktop workspace; controls retain the requested width and type scale. */
 .control-tree { min-height: 0; min-width: 0; }
 .persistent-actions { flex: none; background: #151b1e; z-index: 5; }
-.diagnostics-panel { flex: none; display: grid; gap: 6px; padding: 10px 4px 0; border-top: 1px solid rgba(255,255,255,.14); }
+.diagnostics-panel { display: grid; gap: 6px; border-top: 1px solid rgba(255,255,255,.14); }
 .diagnostics-header { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: calc(12px * var(--control-font-scale, 1)); }
 .diagnostics-header span { color: #9fb0b8; margin-right: auto; }
 .diagnostics-header button { padding: 4px 8px; min-height: 28px; }
@@ -877,7 +867,7 @@ button:disabled { opacity: .5; cursor: default; }
 }
 @media (max-width: 920px) {
   .app-shell { grid-template-columns: minmax(0, 1fr); }
-  .control-rail { min-width: 0; overflow: visible; }
+  .control-rail { min-width: 0; overflow: visible; padding: 18px; }
   .persistent-actions { position: sticky; top: 0; padding-top: 8px; }
   .control-tree { overflow: visible; }
   .control-tree :focus { scroll-margin-top: 220px; }

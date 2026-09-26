@@ -8,7 +8,6 @@ import {
   Headphones,
   ImagePlus,
   Mic,
-  MonitorUp,
   Pause,
   Play,
   Radio,
@@ -28,8 +27,6 @@ import type {
   VoiceConfig,
   VoiceRouteStatus,
   VoiceStatus
-  , SetupStatus
-  , SetupJob
 } from "./types";
 
 const defaultEffect: EffectConfig = {
@@ -46,7 +43,7 @@ const defaultEffect: EffectConfig = {
   provider: "cuda",
   precision: "fp32",
   edge_feather: 0.35,
-  color_match: 0.25,
+  color_match: 0.5,
   sharpen: 0.2,
   temporal_smoothing: 0.4,
   background_enabled: true,
@@ -102,9 +99,6 @@ export function App() {
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | null>(null);
   const [voiceRoute, setVoiceRoute] = useState<VoiceRouteStatus | null>(null);
-  const [setup, setSetup] = useState<SetupStatus | null>(null);
-  const [setupJob, setSetupJob] = useState<SetupJob | null>(null);
-  const [setupTerms, setSetupTerms] = useState(false);
   const [avatarProfiles, setAvatarProfiles] = useState<AvatarProfile[]>([]);
   const [avatarJobs, setAvatarJobs] = useState<AvatarRenderJob[]>([]);
   const [effect, setEffect] = useState<EffectConfig>(defaultEffect);
@@ -121,7 +115,6 @@ export function App() {
   const commandEpoch = useRef(0);
   const hydratedControls = useRef(false);
   const confirmedBackground = useRef<string | null>(null);
-  const [virtualCamera, setVirtualCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
@@ -210,20 +203,15 @@ export function App() {
   const cameraActive = status?.running || busy.includes('camera-start');
   const cameraPhase = !connected ? 'Connection lost — status unknown' : busy.includes('camera-stop') ? 'Stopping' : busy.includes('camera-start') ? 'Starting' : status?.phase ?? 'idle';
   const activeCapture = status?.active_capture;
+  const selectedCamera = devices.find(device =>
+    sourceId ? device.device_id === sourceId : device.index === sourceIndex);
+  const virtualCamera = selectedCamera?.kind === "virtual";
   const cameraPending = Boolean(status?.running && activeCapture && (
     (sourceId ? sourceId !== activeCapture.source_id : sourceIndex !== activeCapture.source_index) ||
     virtualCamera !== activeCapture.virtual_camera));
   const voicePending = Boolean(voiceStatus?.running && voiceStatus.active_config &&
     Object.entries(voiceStatus.active_config).some(([key, value]) =>
       (voice[key as keyof VoiceConfig] ?? null) !== (value ?? null)));
-  const neuralAvailable = Boolean(capabilities?.onnxruntime && capabilities?.insightface &&
-    setup?.components.filter(item => item.id !== "background").every(item => item.ready));
-
-  async function beginModelSetup() {
-    setError(null);
-    try { setSetupJob(await api.installSetup(setupTerms)); }
-    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
-  }
   async function command(key: string, work: () => Promise<void>) {
     if (activeCommands.current.has(key) || activeCommands.current.has('all')) return;
     activeCommands.current.add(key);
@@ -260,9 +248,12 @@ export function App() {
   const previewSrc = useMemo(() => `/preview.mjpeg?t=${previewNonce}`, [previewNonce]);
 
   function neuralEffect(nextEffect: EffectConfig): EffectConfig {
-    // These face settings are fixed rather than exposed as live controls.
+    // These settings are intentionally fixed rather than exposed as controls.
     return {
       ...nextEffect,
+      mode: "onnx_faceswap",
+      precision: "fp32",
+      color_match: 0.5,
       smoothing: defaultEffect.smoothing,
       y_offset: defaultEffect.y_offset,
       temporal_smoothing: defaultEffect.temporal_smoothing
@@ -301,8 +292,7 @@ export function App() {
         nextAudioDevices,
         nextVoiceRoute,
         nextAvatarProfiles,
-        nextAvatarJobs,
-        nextSetup
+        nextAvatarJobs
       ] = await Promise.all([
         api.status(),
         api.capabilities(),
@@ -311,14 +301,11 @@ export function App() {
         api.audioDevices(),
         api.voiceRoute(),
         AVATAR_STUDIO_ENABLED ? api.avatarProfiles() : Promise.resolve([]),
-        AVATAR_STUDIO_ENABLED ? api.avatarJobs() : Promise.resolve([]),
-        api.setup()
+        AVATAR_STUDIO_ENABLED ? api.avatarJobs() : Promise.resolve([])
       ]);
       setStatus(nextStatus);
       setVoiceStatus(nextVoiceStatus);
       setVoiceRoute(nextVoiceRoute);
-      setSetup(nextSetup);
-      setSetupTerms(nextSetup.terms_accepted);
       setCapabilities(nextCapabilities);
       setConnected(true);
       if (!hydratedControls.current) {
@@ -326,7 +313,6 @@ export function App() {
         if (active) {
           setSourceIndex(active.source_index);
           setSourceId(active.source_id ?? null);
-          setVirtualCamera(active.virtual_camera);
         }
         if (nextVoiceStatus.active_config) setVoice(nextVoiceStatus.active_config);
         hydratedControls.current = true;
@@ -616,8 +602,15 @@ export function App() {
       setEffectLoaded(true);
       if (!pendingEffect.current && !sendingEffect.current) {
         effectRevision.current = current.revision;
-        effectRef.current = current.effect;
-        setEffect(current.effect);
+        const normalized = neuralEffect(current.effect);
+        effectRef.current = normalized;
+        setEffect(normalized);
+        if (current.effect.mode !== normalized.mode ||
+            current.effect.precision !== normalized.precision ||
+            current.effect.color_match !== normalized.color_match) {
+          pendingEffect.current = normalized;
+          scheduleEffect();
+        }
       }
     }).catch(err => setError(String(err)));
     const id = window.setInterval(() => {
@@ -642,20 +635,6 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!setupJob || ["ready", "error", "cancelled"].includes(setupJob.state)) return;
-    const id = window.setInterval(() => {
-      api.setupJob(setupJob.id).then(async next => {
-        setSetupJob(next);
-        if (next.state === "ready") {
-          setSetup(await api.completeSetup());
-          setCapabilities(await api.capabilities());
-        }
-      }).catch(err => setError(err instanceof Error ? err.message : String(err)));
-    }, 500);
-    return () => window.clearInterval(id);
-  }, [setupJob?.id, setupJob?.state]);
-
   return (
     <main className="app-shell">
       <section className="preview-stage" aria-label="Live preview">
@@ -667,14 +646,6 @@ export function App() {
             <span>{cameraPhase}</span>
           </div>
         )}
-          <div className="top-status">
-            <StatusPill active={running} text={running && connected ? "Live" : cameraPhase} />
-            <StatusPill active={status?.virtual_camera_ready ?? false} text="Virtual cam" />
-            <StatusPill active={status?.target_ready ?? Boolean(effect.target_image_path)} text="Target" />
-            <StatusPill active={status?.background_ready ?? effect.background_enabled} text="Background" />
-            <StatusPill active={status?.model_ready ?? false} text={status?.model_provider ?? "Neural"} />
-            <StatusPill active={voiceRunning} text={voiceRunning ? "Voice" : "Mic idle"} />
-          </div>
           {(error || status?.last_error || voiceStatus?.last_error) && (
             <div className="error-banner">
               <CircleAlert size={18} />
@@ -720,55 +691,12 @@ export function App() {
           {(error || status?.last_error || voiceStatus?.last_error) && <p className="control-error" role="alert">{error ?? status?.last_error ?? voiceStatus?.last_error}</p>}
         </div>
         <div className="control-tree">
-        <ControlGroup title="Setup & help" icon={<CheckCircle2 size={18} />} defaultOpen>
-          <p className="section-help">Runs on this computer. Camera and microphone start only when you choose Start.</p>
-          <label className="model-path-field"><span>Camera effect</span>
-            <select aria-label="Camera effect" value={effect.mode} onChange={e => {
-              const mode = e.target.value as EffectConfig['mode'];
-              patchEffect(mode === 'passthrough' ? {mode, background_enabled: false} : {mode});
-            }}>
-              <option value="passthrough">Camera preview (no model)</option>
-              <option value="cartoon">Cartoon (no model)</option>
-              <option value="privacy_blur">Privacy blur (no model)</option>
-              <option value="onnx_faceswap">Neural face swap</option>
-              {effect.mode === 'target_head' && <option value="target_head">Target overlay</option>}
-            </select>
-          </label>
-          {setup && !setup.ready && (
-            <div className="setup-card">
-              <strong>Finish optional model setup</strong>
-              <p>Face swap and background are selected. Download about {(setup.download_bytes / 1_000_000).toFixed(0)} MB now, or use camera preview without them.</p>
-              <ul className="setup-components">
-                {setup.components.map(item => <li key={item.id}><span>{item.label}</span><span>{item.ready ? "Ready" : `${(item.size / 1_000_000).toFixed(0)} MB`}</span></li>)}
-              </ul>
-              <label className="setup-terms">
-                <input type="checkbox" checked={setupTerms} onChange={event => setSetupTerms(event.target.checked)} />
-                <span>I confirm my use is eligible under the <a href={setup.terms_url} target="_blank" rel="noreferrer">InsightFace non-commercial research terms</a>.</span>
-              </label>
-              {setupJob && !["ready", "error", "cancelled"].includes(setupJob.state) ? (
-                <>
-                  <progress max={1} value={setupJob.progress} aria-label="Model download progress" />
-                  <p className="section-help">{setupJob.state} — {Math.round(setupJob.progress * 100)}%</p>
-                  <button className="secondary-button" onClick={() => void api.cancelSetup(setupJob.id).then(setSetupJob)}>Cancel download</button>
-                </>
-              ) : (
-                <button className="primary-button" disabled={!setupTerms} onClick={() => void beginModelSetup()}>Download and set up</button>
-              )}
-              {setupJob?.state === "error" && <p className="control-error">{setupJob.error} You can retry safely.</p>}
-              <p className="section-help">Files stay on this computer. Existing valid files are kept.</p>
-            </div>
-          )}
-          {setup?.ready && <p className="setup-ready"><CheckCircle2 size={16} /> Optional models are ready.</p>}
-          {!neuralAvailable && capabilities && (!capabilities.onnxruntime || !capabilities.insightface) && <p className="section-help">This build does not include the neural runtime. Install the current Windows release.</p>}
-          <p className="section-help">Virtual camera: {capabilities?.platform === 'Windows' ? 'install UnityCapture separately, then select Unity Video Capture in your call app.' : 'install and load v4l2loopback, then select FaceSwap in your call app.'}</p>
-          <a href="https://face.mashr.ai/#setup" target="_blank" rel="noreferrer">Setup guide</a>
-        </ControlGroup>
-        <ControlGroup title="Camera & output" icon={<Camera size={18} />}>
+        <ControlGroup title="Camera" icon={<Camera size={18} />}>
           {cameraPending && <div className="pending-settings"><p>Changes apply on restart</p><button className="secondary-button" onClick={() => void start()} disabled={busy.includes('camera-start') || status?.phase === 'stopping'}>Apply &amp; restart camera</button></div>}
           {status?.virtual_camera_state === 'waiting_for_receiver' && <p className="section-help">Waiting for receiving application</p>}
           <label className="field-label" htmlFor="camera">
             <Camera size={16} />
-            Camera
+            Camera (needs restart)
           </label>
           <select
             id="camera"
@@ -794,13 +722,6 @@ export function App() {
           </select>
           {devices.length === 0 && <p className="section-help">No camera detected. Connect a webcam and refresh devices.</p>}
 
-          <div className="toggle-row">
-            <label>
-              <input type="checkbox" checked={virtualCamera} onChange={(event) => setVirtualCamera(event.target.checked)} />
-              <MonitorUp size={16} />
-              Virtual camera
-            </label>
-          </div>
         </ControlGroup>
 
         <ControlGroup title="Face swap" icon={<SlidersHorizontal size={18} />} defaultOpen>
@@ -866,14 +787,6 @@ export function App() {
                 onChange={(edge_feather) => patchEffect({ edge_feather })}
               />
               <Slider
-                label="Color match"
-                min={0}
-                max={1}
-                step={0.01}
-                value={effect.color_match}
-                onChange={(color_match) => patchEffect({ color_match })}
-              />
-              <Slider
                 label="Detail"
                 min={0}
                 max={1}
@@ -935,7 +848,7 @@ export function App() {
           </div>
 
           <details className="settings-tree">
-            <summary>Input & voice effect</summary>
+            <summary>Input &amp; voice effect (needs restart)</summary>
             <div className="settings-tree-body">
               <label className="toggle-inline">
                 <input
@@ -1037,7 +950,7 @@ export function App() {
             </div>
           </details>
           <details className="settings-tree">
-            <summary>Virtual microphone</summary>
+            <summary>Virtual microphone (needs restart)</summary>
             <div className="settings-tree-body">
               {capabilities?.platform === 'Windows' && <>
                 <p className="section-help">Install VB-CABLE separately. Send to CABLE Input here; select CABLE Output in your call app.</p>
@@ -1064,7 +977,7 @@ export function App() {
             </div>
           </details>
           <details className="settings-tree">
-            <summary>Headphone monitor</summary>
+            <summary>Headphone monitor (needs restart)</summary>
             <div className="settings-tree-body">
               <label className="toggle-inline">
                 <input
@@ -1143,7 +1056,7 @@ export function App() {
             <details className="settings-tree">
               <summary>
                 <SlidersHorizontal size={16} />
-                <span>DSP modifiers</span>
+                <span>DSP modifiers (needs restart)</span>
               </summary>
               <div className="settings-tree-body">
                 <Slider
@@ -1194,17 +1107,6 @@ export function App() {
               {(capabilities?.swap_backends ?? [{ id: "inswapper", label: "InSwapper" }]).map((backend) => (
                 <option key={backend.id} value={backend.id}>{backend.label}</option>
               ))}
-            </select>
-            <label className="field-label" htmlFor="precision">
-              Precision
-            </label>
-            <select
-              id="precision"
-              value={effect.precision}
-              onChange={(event) => patchEffect({ precision: event.target.value as EffectConfig["precision"] })}
-            >
-              <option value="fp32">FP32 (reference)</option>
-              <option value="fp16">Mixed precision (experimental)</option>
             </select>
             <label className="field-label" htmlFor="provider">
               <Cpu size={16} />
@@ -1375,6 +1277,13 @@ export function App() {
                   <Metric label="Frame age" value={`${(status?.frame_age_ms ?? 0).toFixed(0)} ms`} />
                   <Metric label="Dropped frames" value={String(status?.dropped_frames ?? 0)} />
                   <Metric label="Provider" value={status?.model_provider ?? "-"} />
+                  <Metric label="Precision" value="FP32" />
+                  <Metric label="Camera" value={selectedCamera?.label ?? "Automatic standard webcam"} />
+                  <Metric label="Camera state" value={running && connected ? "live" : cameraPhase} />
+                  <Metric label="Virtual camera" value={status?.virtual_camera_ready ? "ready" : virtualCamera ? "selected" : "off"} />
+                  <Metric label="Target" value={(status?.target_ready ?? Boolean(effect.target_image_path)) ? "ready" : "missing"} />
+                  <Metric label="Background" value={(status?.background_ready ?? effect.background_enabled) ? "ready" : "off"} />
+                  <Metric label="Neural model" value={status?.model_ready ? "ready" : "not ready"} />
                   <Metric label="Face lock" value={status?.face_locked ? "locked" : "searching"} />
                 </div>
               </details>
@@ -1421,19 +1330,21 @@ export function App() {
                   <Metric label="MuseTalk" value={capabilities?.musetalk_configured ? "ready" : capabilities?.musetalk_status ?? "not installed"} />
                 </div>
               </details>
+              <details className="settings-tree diagnostics-panel">
+                <summary>Camera diagnostics</summary>
+                <div className="settings-tree-body">
+                  <div className="diagnostics-header">
+                    <span>{status?.capture_backend ?? "waiting"}{status?.capture_format ? ` · ${status.capture_format}` : ""}</span>
+                    <button className="secondary-button" onClick={() => void navigator.clipboard.writeText(diagnostics.join('\n'))}>Copy</button>
+                    <button className="secondary-button" onClick={() => void api.clearDiagnostics().then(result => setDiagnostics(result.entries))}>Clear</button>
+                  </div>
+                  <pre>{diagnostics.length ? diagnostics.join('\n') : "Start the camera to collect diagnostics."}</pre>
+                </div>
+              </details>
             </div>
           </details>
         </footer>
         </div>
-        <section className="diagnostics-panel" aria-label="Camera diagnostic log">
-          <div className="diagnostics-header">
-            <strong>Camera diagnostics</strong>
-            <span>{status?.capture_backend ?? "waiting"}{status?.capture_format ? ` · ${status.capture_format}` : ""}</span>
-            <button className="secondary-button" onClick={() => void navigator.clipboard.writeText(diagnostics.join('\n'))}>Copy</button>
-            <button className="secondary-button" onClick={() => void api.clearDiagnostics().then(result => setDiagnostics(result.entries))}>Clear</button>
-          </div>
-          <pre>{diagnostics.length ? diagnostics.join('\n') : "Start the camera to collect diagnostics."}</pre>
-        </section>
       </aside>
     </main>
   );
